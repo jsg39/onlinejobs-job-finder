@@ -52,9 +52,11 @@ class OpenAICompatibleLLM:
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
-            tools=tools,
             temperature=self.temperature,
+            **({"tools": tools} if tools else {}),
         )
+        if not resp.choices:  # some free providers return an empty body under load
+            raise RuntimeError(f"{self.model} returned no choices")
         msg = resp.choices[0].message
         usage = resp.usage
         return Turn(
