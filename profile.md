@@ -8,7 +8,7 @@ The agent may only claim what is written here. Edit freely; keep facts literal.
 - Not interested in: graphic design, video editing, social media management, cold calling, data entry.
 
 ## Summary
-Software engineer with experience in Python web development, production maintenance, and AI integration. Leads teams building internal HR and rental platforms and serves as the technical contact for an international client's Azure application.
+Software engineer focused on backend development, AI systems, and cloud deployment. Builds and maintains production web applications with Python, FastAPI, and React across AWS, Azure, and GCP. Experienced in designing large-scale data and document-processing pipelines and integrating LLMs and computer vision into real products. Leads development teams, translates business requirements into system architecture, and works directly with international clients from design through deployment.
 
 ## Experience
 
@@ -17,8 +17,8 @@ Software engineer with experience in Python web development, production maintena
 - Integrated the YOLO11n computer-vision model into a mobile application's face-verification workflow.
 - Converted 640+ image-heavy PDFs (~320,000 pages) into structured output in a document-AI project using multilingual OCR, text-image linking, schema-validated LLM extraction, cloud queuing, and retries.
 - Engineered a resumable, parallel pipeline to label and categorize 450,000 images across 50,000 sets, with QA feedback loops, drift detection, automated validation and repair, and cost tracking.
-- Lead six developers across day and night shifts building an internal HR and operations platform (FastAPI, React, GCP Cloud Run), live for 60+ employees; deliver attendance, leave approvals, IT support ticketing, and asset inventory.
-- Lead three developers on a multi-tenant rental platform (FastAPI, React), now in staging; translate requirements into system specs and architecture for role-based access control, secure document handling, financial workflows, CI/CD, and third-party integrations.
+- Lead six developers across day and night shifts building an internal HR and operations platform (FastAPI, React, GCP Cloud Run), live for 60+ employees; deliver attendance, leave approvals, IT support ticketing, and asset inventory as the foundation of a planned ERP.
+- Lead three developers on a multi-tenant ERP property management platform (FastAPI, React), now in staging; translate requirements into system specs and architecture for role-based access control, secure document handling, financial workflows, CI/CD, and third-party integrations.
 - Partnered directly with an international client to build and refine an LLM fine-tuning pipeline, covering data cleaning, training, evaluation, deployment, and post-release improvements for structured data extraction.
 
 ### Python Developer Intern — Calcmenu Philippines Inc., Remote (Dec 2024 – May 2025)
