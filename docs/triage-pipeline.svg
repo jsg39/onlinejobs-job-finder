@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 640" width="760" height="640" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+  <style>
+    .bg { fill: #ffffff; }
+    .box { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1.5; }
+    .jev { fill: #eef4ff; stroke: #4f7cff; stroke-width: 1.5; }
+    .slow { fill: #fff6e5; stroke: #d4a72c; stroke-width: 1.5; }
+    .out { fill: #eafbef; stroke: #2da44e; stroke-width: 1.5; }
+    .drop { fill: #fff0f0; stroke: #cf222e; stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .next { fill: none; stroke: #8c959f; stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .title { fill: #1f2328; font-size: 20px; font-weight: 700; }
+    .h { fill: #1f2328; font-size: 14.5px; font-weight: 600; }
+    .t { fill: #59636e; font-size: 12.5px; }
+    .tag { fill: #4f7cff; font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+    .arrow { stroke: #8c959f; stroke-width: 1.6; fill: none; }
+    .head { fill: #8c959f; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .box { fill: #161b22; stroke: #30363d; }
+      .jev { fill: #121d36; stroke: #6e8fff; }
+      .slow { fill: #2a2110; stroke: #bb8009; }
+      .out { fill: #0f2a19; stroke: #3fb950; }
+      .drop { fill: #2a1214; stroke: #f85149; }
+      .next { stroke: #6e7681; }
+      .title, .h { fill: #e6edf3; }
+      .t { fill: #9198a1; }
+      .tag { fill: #6e8fff; }
+      .arrow { stroke: #6e7681; }
+      .head { fill: #6e7681; }
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" class="head"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="760" height="640"/>
+  <text class="title" x="28" y="40">Job triage pipeline</text>
+  <text class="t" x="28" y="62">Cheap, fast decisions first; slow and expensive work only for likely fits.</text>
+
+  <!-- 1 search -->
+  <rect class="box" x="28" y="84" width="440" height="62" rx="10"/>
+  <text class="h" x="46" y="110">1 · Search onlinejobs.ph</text>
+  <text class="t" x="46" y="130">keyword "python" · 30 newest cards per page</text>
+
+  <!-- 2 jev screen -->
+  <path class="arrow" d="M248,146 V172" marker-end="url(#a)"/>
+  <rect class="jev" x="28" y="174" width="440" height="72" rx="10"/>
+  <text class="tag" x="46" y="196">JEV · NOUL</text>
+  <text class="h" x="46" y="216">2 · Screen every card in one call</text>
+  <text class="t" x="46" y="235">"Is this a realistic fit?" → probability per job · ~250 ms</text>
+
+  <path class="arrow" d="M468,210 H520" marker-end="url(#a)"/>
+  <rect class="drop" x="522" y="174" width="210" height="72" rx="10"/>
+  <text class="h" x="538" y="200">Clear mismatches</text>
+  <text class="t" x="538" y="219">below 20% → hidden</text>
+  <text class="t" x="538" y="236">never fetched, never read</text>
+
+  <!-- 3 fetch -->
+  <path class="arrow" d="M248,246 V272" marker-end="url(#a)"/>
+  <rect class="slow" x="28" y="274" width="440" height="62" rx="10"/>
+  <text class="h" x="46" y="300">3 · Fetch full postings (likely fits only)</text>
+  <text class="t" x="46" y="320">5 s crawl delay each (robots.txt), the slow step</text>
+
+  <!-- 4 jev score -->
+  <path class="arrow" d="M248,336 V362" marker-end="url(#a)"/>
+  <rect class="jev" x="28" y="364" width="440" height="72" rx="10"/>
+  <text class="tag" x="46" y="386">JEV · SCORE + NOUL</text>
+  <text class="h" x="46" y="406">4 · Score each posting against the profile</text>
+  <text class="t" x="46" y="425">fit 0–4 (hireable?) · appeal 0–4 (wanted?) · scam 0–1</text>
+
+  <!-- 5 shortlist -->
+  <path class="arrow" d="M248,436 V462" marker-end="url(#a)"/>
+  <rect class="out" x="28" y="464" width="440" height="72" rx="10"/>
+  <text class="h" x="46" y="490">5 · Ranked shortlist (.md)</text>
+  <text class="t" x="46" y="509">rank = mean(fit, appeal) · scams excluded</text>
+  <text class="t" x="46" y="526">link · pay · type · hours · summary · matching skills</text>
+
+  <!-- 6 llm next -->
+  <path class="arrow" d="M248,536 V562" marker-end="url(#a)" stroke-dasharray="4 3"/>
+  <rect class="next" x="28" y="564" width="440" height="56" rx="10"/>
+  <text class="h" x="46" y="588">6 · LLM: summaries and drafts (next step)</text>
+  <text class="t" x="46" y="607">tokens scale with the shortlist, not with the scan</text>
+
+  <!-- side notes -->
+  <text class="h" x="522" y="306">Why</text>
+  <text class="t" x="522" y="326">Jev answers in milliseconds</text>
+  <text class="t" x="522" y="344">for fractions of a cent, so</text>
+  <text class="t" x="522" y="362">it decides what deserves the</text>
+  <text class="t" x="522" y="380">slow crawl and, later, the</text>
+  <text class="t" x="522" y="398">expensive LLM.</text>
+</svg>
