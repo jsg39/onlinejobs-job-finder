@@ -39,6 +39,14 @@ $ python -m ojagent --max-jobs 5
 | `store.py` | SQLite memory: postings are cached so they're never fetched twice, and assessed jobs are marked `already_assessed` in later runs. |
 | `agent.py` | Provider-agnostic loop over any OpenAI-compatible API (OpenRouter → Claude/GPT, OpenAI, or local vLLM/Ollama), with a step budget, no-tool-call nudges, token accounting, and per-run traces. |
 | `report.py` | Builds the Markdown report from what the tools actually saved, so the model can't report work it didn't do. |
+| `prefilter.py` | Optional [Jev](https://docs.typesafe.ai) prefilter: one call scores every search result's fit before the agent sees it (see below). |
+
+### Jev prefilter
+Jev (TypeSafe AI) is a decision-only model: it answers typed questions with probabilities instead of text. When `TYPESAFE_API_KEY` is set, `search_jobs` sends the profile plus every new result card to Jev as one request with one yes/no (`noul`) question per job, and hides cards scoring below `--prefilter-threshold` (default 0.2) from the agent. Each hidden posting skips a 5 s crawl and an LLM assessment; the report lists what was hidden and its score.
+
+- **Low threshold on purpose.** Missing a good job costs more than reading a bad one, so only clear mismatches are hidden; borderline cards still go to the LLM.
+- **Fails open.** If Jev errors or is rate-limited past its retries, every card is shown and the report says so.
+- **Pinned model** (`jev-1.13.0`), not the moving `jev-latest` alias, so results don't shift underneath the evals.
 
 ### Design decisions
 - **Verify outcomes, don't trust them.** The model's `finish` summary is shown as a note only. Verdicts, evidence, and drafts in the report come from rows that passed validation.
@@ -73,6 +81,7 @@ Results, 2 trials per model and task (2026-10-13):
 
 ```bash
 python -m evals.run_evals --model anthropic/claude-sonnet-5.5 --model anthropic/claude-haiku-5.5 --trials 2
+python -m evals.run_evals --prefilter      # also runs discover+jev and reports postings hidden and Jev latency
 ```
 
 ## Setup
@@ -90,8 +99,9 @@ Each run writes `out/<run_id>.md` (assessments, employer checklist, subject and 
 
 ## Tests
 
-28 offline tests (`pytest`, no network) cover:
+36 offline tests (`pytest`, no network) cover:
 - HTML parsing against saved real pages, and the crawl delay
 - every validator rule
 - the agent loop with a scripted LLM: retry after rejection, bad arguments, unknown tools, step budget, text-only replies, cross-run memory, cache hits
 - the eval scorer
+- the Jev prefilter against a mocked API: request shape, rate-limit retry, hiding mismatches, skipping already-assessed jobs, failing open
