@@ -13,7 +13,7 @@ const latestRun = (): Plugin => ({
         res.end(body);
       } catch {
         res.statusCode = 404;
-        res.end(JSON.stringify({ error: "No run yet. Run: python -m ojagent.triage" }));
+        res.end(JSON.stringify({ error: "Run triage once to create out/latest.json:" }));
       }
     });
   },
