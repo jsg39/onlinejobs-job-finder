@@ -14,6 +14,52 @@ $ python -m ojagent --max-jobs 5
 ...
 ```
 
+## Job triage app
+
+A web app on top of the same scraper. Pick a keyword (default `python`), optionally upload a resume, click **Find my top jobs**, and get a shortlist of postings ranked by how well you fit them and how much you'd want them, with pay, hours, a summary and a link to each posting.
+
+![Triage pipeline](docs/triage-pipeline.png)
+
+- **Jev screens first.** One Jev call scores every search card, and clear mismatches are never fetched. Each skipped fetch saves the 5 s robots.txt crawl delay.
+- **Two scores, one rank.** Jev scores each fetched posting on *fit* (would they hire you?) and *appeal* (would you want it, given the pay floor and fully-remote preference in `profile.md`), plus a scam signal. Rank is the mean of fit and appeal.
+- **The LLM only sees the shortlist.** It writes a 2–3 sentence summary for shortlisted jobs, so LLM tokens grow with the shortlist, not with the number of postings scanned. `--no-jev` is the baseline where the LLM has to score and summarize every posting.
+- **Resume upload.** A PDF, DOCX or text resume replaces the experience part of the profile. The preferences section of `profile.md` is kept, because resumes don't state pay or remote preferences. The resume is saved to `data/resume.txt` and reused until you remove it.
+
+### Run it
+
+The backend is FastAPI, and the frontend is React (Vite) in `ui/`. Run them in two terminals:
+
+```bash
+# Terminal 1: backend on http://127.0.0.1:8000 (API docs at /docs)
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn ojagent.api:app --port 8000
+
+# Terminal 2: frontend on http://localhost:5173
+cd ui
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. The dev server forwards `/api` to the backend. `.env` needs `TYPESAFE_API_KEY` for Jev; an LLM key (`LLM_API_KEY`) is optional, and without one, summaries are the posting's opening lines.
+
+A search takes a few minutes, because every posting that passes the Jev screen is fetched at the site's crawl delay. The progress bar shows the current stage, and you can reload the page without losing it. Only one search runs at a time.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/runs` | Start a search: `{"keyword": "python", "pages": 1}` (1–3 pages of 30). Returns 409 if one is already running. |
+| `GET /api/runs/{id}` · `GET /api/runs/active` | Progress (stage, done/total, elapsed), and the results when done. |
+| `GET /api/latest` | The most recent results (also saved as `out/latest.json`). |
+| `GET` · `POST` · `DELETE /api/resume` | Show, upload (PDF/DOCX/TXT/MD, under 5 MB) or remove the resume used for matching. |
+
+Without the UI, the same pipeline runs from the command line and writes a Markdown report to `out/`:
+
+```bash
+python -m ojagent.triage                     # Jev screens and ranks, the LLM summarizes the shortlist
+python -m ojagent.triage --no-jev            # baseline: the LLM scores and summarizes everything
+python -m ojagent.triage --keyword fastapi --pages 2
+```
+
 ## Architecture
 
 ```
@@ -40,6 +86,9 @@ $ python -m ojagent --max-jobs 5
 | `agent.py` | Provider-agnostic loop over any OpenAI-compatible API (OpenRouter → Claude/GPT, OpenAI, or local vLLM/Ollama), with a step budget, no-tool-call nudges, token accounting, and per-run traces. |
 | `report.py` | Builds the Markdown report from what the tools actually saved, so the model can't report work it didn't do. |
 | `prefilter.py` | Optional [Jev](https://docs.typesafe.ai) prefilter: one call scores every search result's fit before the agent sees it (see below). |
+| `triage.py` | The triage pipeline behind the app: screen, fetch, score, rank, summarize, with timings and LLM token counts. Also a CLI. |
+| `api.py` | FastAPI backend for the app: background runs with progress, resume upload and text extraction. |
+| `ui/` | React + TypeScript frontend (Vite), dark mode. Applied / not-interested marks are kept in the browser. |
 
 ### Jev prefilter
 Jev (TypeSafe AI) is a decision-only model: it answers typed questions with probabilities instead of text. When `TYPESAFE_API_KEY` is set, `search_jobs` sends the profile plus every new result card to Jev as one request with one yes/no (`noul`) question per job, and hides cards scoring below `--prefilter-threshold` (default 0.2) from the agent. Each hidden posting skips a 5 s crawl and an LLM assessment; the report lists what was hidden and its score.
@@ -99,9 +148,11 @@ Each run writes `out/<run_id>.md` (assessments, employer checklist, subject and 
 
 ## Tests
 
-36 offline tests (`pytest`, no network) cover:
+57 offline tests (`pytest`, no network) cover:
 - HTML parsing against saved real pages, and the crawl delay
 - every validator rule
 - the agent loop with a scripted LLM: retry after rejection, bad arguments, unknown tools, step budget, text-only replies, cross-run memory, cache hits
 - the eval scorer
 - the Jev prefilter against a mocked API: request shape, rate-limit retry, hiding mismatches, skipping already-assessed jobs, failing open
+- the triage pipeline: fetching only what Jev keeps, the no-Jev baseline, fit + appeal ranking, LLM summaries for the shortlist only, JSON export
+- the API: runs and progress, one run at a time, resume upload (PDF/DOCX/text) keeping profile preferences, input validation
