@@ -27,6 +27,12 @@ def render(result: RunResult, rows: list[dict], model: str) -> str:
         )
     if result.summary:
         lines += ["", f"> Agent note: {result.summary}"]
+    if result.prefiltered:
+        lines += ["", f"**Skipped by prefilter ({len(result.prefiltered)}):** " + "; ".join(
+            f"{title} ({p:.0%})" for title, p in sorted(result.prefiltered.values(), key=lambda x: -x[1])
+        )]
+    if result.prefilter_errors:
+        lines += ["", f"> Prefilter failed, so nothing was skipped: {result.prefilter_errors[0]}"]
 
     for r in rows:
         p, a, d = r["posting"], r["assessment"], r["draft"]

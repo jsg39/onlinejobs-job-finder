@@ -12,7 +12,8 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field, ValidationError
 
-from .models import ApplicationDraft, FitAssessment
+from .models import ApplicationDraft, FitAssessment, JobSummary
+from .prefilter import Prefilter
 from .scraper import JobSource
 from .store import Store
 from .verify import check_assessment, check_draft
@@ -81,6 +82,11 @@ class Toolbox:
     finished: bool = False
     final_summary: str = ""
     rejections: int = 0
+    prefilter: Prefilter | None = None
+    prefilter_threshold: float = 0.2
+    # job_id -> (title, fit probability) for postings the prefilter dropped
+    prefiltered: dict[str, tuple[str, float]] = field(default_factory=dict)
+    prefilter_errors: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.tools = {
@@ -153,9 +159,16 @@ class Toolbox:
     def search_jobs(self, args: SearchJobsArgs) -> dict:
         jobs = self.source.search(args.keyword, args.page)
         done = self.store.assessed_ids()
+        fit = self._fit_probabilities([j for j in jobs if j.job_id not in done])
+        dropped = {j.job_id for j in jobs if fit.get(j.job_id, 1.0) < self.prefilter_threshold}
+        for j in jobs:
+            if j.job_id in dropped:
+                self.prefiltered[j.job_id] = (j.title, fit[j.job_id])
+        jobs = [j for j in jobs if j.job_id not in dropped]
         return {
             "ok": True,
             "count": len(jobs),
+            "hidden_as_clear_mismatches": len(dropped),
             "jobs": [
                 {
                     **j.model_dump(exclude={"url"}),
@@ -165,6 +178,16 @@ class Toolbox:
                 for j in jobs
             ],
         }
+
+    def _fit_probabilities(self, jobs: list[JobSummary]) -> dict[str, float]:
+        """Fails open: if the prefilter errors, every job is shown to the agent."""
+        if self.prefilter is None or not jobs:
+            return {}
+        try:
+            return self.prefilter.fit_probabilities(self.profile, jobs)
+        except Exception as e:
+            self.prefilter_errors.append(f"{type(e).__name__}: {e}")
+            return {}
 
     def get_job_details(self, args: GetJobDetailsArgs) -> dict:
         posting = self.store.get_posting(args.job_id)

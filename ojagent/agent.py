@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 from .llm import LLM
+from .prefilter import Prefilter
 from .scraper import JobSource
 from .store import Store
 from .tools import Toolbox
@@ -70,6 +71,8 @@ class RunResult:
     summary: str
     trace_path: Path | None = None
     tool_log: list[dict] = field(default_factory=list)
+    prefiltered: dict[str, tuple[str, float]] = field(default_factory=dict)
+    prefilter_errors: list[str] = field(default_factory=list)
 
 
 class Agent:
@@ -81,6 +84,8 @@ class Agent:
         profile: str,
         max_steps: int = 60,
         trace_dir: Path | None = None,
+        prefilter: Prefilter | None = None,
+        prefilter_threshold: float = 0.2,
     ):
         self.llm = llm
         self.source = source
@@ -88,10 +93,19 @@ class Agent:
         self.profile = profile
         self.max_steps = max_steps
         self.trace_dir = trace_dir
+        self.prefilter = prefilter
+        self.prefilter_threshold = prefilter_threshold
 
     def run(self, task: str, max_jobs: int = 10) -> RunResult:
         run_id = f"{date.today():%Y%m%d}-{uuid.uuid4().hex[:6]}"
-        box = Toolbox(self.source, self.store, self.profile, run_id)
+        box = Toolbox(
+            self.source,
+            self.store,
+            self.profile,
+            run_id,
+            prefilter=self.prefilter,
+            prefilter_threshold=self.prefilter_threshold,
+        )
         messages: list[dict] = [
             {
                 "role": "system",
@@ -156,4 +170,6 @@ class Agent:
             summary=box.final_summary,
             trace_path=trace_path,
             tool_log=tool_log,
+            prefiltered=box.prefiltered,
+            prefilter_errors=box.prefilter_errors,
         )
