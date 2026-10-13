@@ -107,3 +107,13 @@ def test_extract_docx_resume(tmp_path):
     path = tmp_path / "cv.docx"
     doc.save(path)
     assert "Jane Dev." in extract_resume_text("cv.docx", path.read_bytes())
+
+
+def test_active_run_lets_the_ui_resume_polling(client, monkeypatch):
+    import ojagent.api as api
+
+    assert client.get("/api/runs/active").json() == {"run": None}
+    monkeypatch.setattr(api, "triage", lambda *a, **k: time.sleep(0.3))
+    first = client.post("/api/runs", json={}).json()
+    assert client.get("/api/runs/active").json()["run"]["id"] == first["id"]
+    wait(client, first["id"])

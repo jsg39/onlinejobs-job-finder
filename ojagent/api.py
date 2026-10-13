@@ -206,6 +206,11 @@ def create_app(
         threading.Thread(target=execute, args=(run,), daemon=True).start()
         return run.view()
 
+    @app.get("/api/runs/active")
+    def active_run() -> dict:
+        running = [r for r in runs.values() if r.status == "running"]
+        return {"run": running[0].view() if running else None}
+
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str) -> dict:
         run = runs.get(run_id)
