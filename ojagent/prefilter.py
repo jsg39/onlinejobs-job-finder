@@ -44,7 +44,6 @@ class JevPrefilter:
         if not jobs:
             return {}
         body = {
-            "model": self.model,
             "state": {
                 "profile": profile,
                 "jobs": {j.job_id: {"title": j.title, "snippet": j.snippet} for j in jobs},
@@ -61,9 +60,14 @@ class JevPrefilter:
                 for j in jobs
             },
         }
-        data = self._post(body)
+        answers = self.ask(body["state"], body["questions"])
+        return {job_id: float(a["noul"]) for job_id, a in answers.items()}
+
+    def ask(self, state: str | dict, questions: dict) -> dict:
+        """One System One call; returns the raw answers keyed by question id."""
+        data = self._post({"model": self.model, "state": state, "questions": questions})
         self.input_tokens += data.get("usage", {}).get("input_tokens", 0)
-        return {job_id: float(a["noul"]) for job_id, a in data["answers"].items()}
+        return data["answers"]
 
     def _post(self, body: dict) -> dict:
         for attempt in range(self.retries + 1):
