@@ -3,7 +3,7 @@
 The agent may only claim what is written here. Edit freely; keep facts literal.
 
 ## Preferences
-- Looking for: remote full-time or part-time roles in backend, AI/LLM, full-stack, or data engineering.
+- Looking for: fully remote full-time or part-time roles in backend, AI/LLM, full-stack, or data engineering. No on-site or hybrid work.
 - Minimum pay: [EDIT ME, e.g. PHP 50,000/month or USD 900/month]
 - Not interested in: graphic design, video editing, social media management, cold calling, data entry.
 
