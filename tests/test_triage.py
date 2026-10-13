@@ -1,5 +1,8 @@
 """Triage pipeline with a fake source and a fake Jev (no network)."""
 
+import json
+
+from ojagent.llm import Turn
 from ojagent.triage import matching_skills, render, summarize, triage
 from tests.conftest import DESIGN_JOB, PROFILE, PYTHON_JOB
 
@@ -24,6 +27,24 @@ class FakeJev:
         }
 
 
+class FakeLLM:
+    """Answers with fixed JSON per job title; counts calls and tokens."""
+
+    model = "fake"
+
+    def __init__(self, replies):
+        self.replies = replies
+        self.titles: list[str] = []
+
+    def complete(self, messages, tools):
+        posting = messages[1]["content"].split("<posting>")[1].split("</posting>")[0]
+        job = json.loads(posting)
+        self.titles.append(job["title"])
+        reply = self.replies[job["title"]]
+        return Turn(content=reply if isinstance(reply, str) else json.dumps(reply),
+                    input_tokens=1000, output_tokens=50)
+
+
 FITS = {PYTHON_JOB.title: 3.4, DESIGN_JOB.title: 0.2}
 
 
@@ -34,11 +55,33 @@ def test_hidden_cards_are_never_fetched(source):
     assert [s.posting.job_id for s in result.scored] == ["100"]
 
 
-def test_fetch_all_baseline_reads_everything(source):
-    result = triage(source, FakeJev({}, FITS), PROFILE, fetch_all=True)
+def test_no_jev_baseline_has_the_llm_score_everything(source):
+    llm = FakeLLM({
+        PYTHON_JOB.title: {"fit": 3, "appeal": 4, "scam": 0.05, "summary": "FastAPI backend role."},
+        DESIGN_JOB.title: "Sure! {\"fit\": 0, \"appeal\": 0, \"scam\": 0.1, \"summary\": \"Design.\"}",
+    })
+    result = triage(source, None, PROFILE, llm=llm)
     assert source.fetches == ["100", "200"] and not result.hidden
     assert [s.posting.job_id for s in result.scored] == ["100", "200"]
+    assert result.scored[0].summary == "FastAPI backend role." and result.scored[0].rank == 3.5
+    assert (result.llm_calls, result.llm_input_tokens) == (2, 2000)
     assert "screen_cards" not in result.timings
+
+
+def test_with_jev_the_llm_only_summarizes_the_shortlist(source):
+    llm = FakeLLM({PYTHON_JOB.title: {"summary": "Backend APIs; strong FastAPI match; Kubernetes gap."}})
+    result = triage(source, FakeJev({"100": 0.9, "200": 0.9}, FITS), PROFILE, llm=llm)
+    assert llm.titles == [PYTHON_JOB.title]
+    assert result.llm_calls == 1
+    md = render(result, PROFILE)
+    assert "Kubernetes gap." in md.split("## Shortlist")[1] and "LLM: **1** calls" in md
+
+
+def test_bad_llm_reply_falls_back_to_posting_text(source):
+    llm = FakeLLM({PYTHON_JOB.title: "no json here"})
+    result = triage(source, FakeJev({"100": 0.9, "200": 0.05}, FITS), PROFILE, llm=llm)
+    assert result.scored[0].summary is None
+    assert "We need a backend developer." in render(result, PROFILE).split("## Shortlist")[1]
 
 
 def test_card_screen_failure_fetches_everything(source):
