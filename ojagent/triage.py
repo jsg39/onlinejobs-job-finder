@@ -331,6 +331,52 @@ def render(result: TriageResult, profile: str, scam_flag: float = 0.3) -> str:
     return "\n".join(lines)
 
 
+def to_json(result: TriageResult, profile: str) -> dict:
+    """Everything the UI shows, one object per job."""
+    shortlisted = {id(s) for s in result.shortlist}
+    cards = {c.job_id: c for c in result.cards}
+    return {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "used_jev": result.used_jev,
+        "min_rank": result.min_rank,
+        "stats": {
+            "scanned": len(result.cards),
+            "hidden": len(result.hidden),
+            "fetched": len(result.cards) - len(result.hidden),
+            "shortlisted": len(shortlisted),
+            "seconds": {k: round(v, 1) for k, v in result.timings.items()},
+            "llm_calls": result.llm_calls,
+            "llm_input_tokens": result.llm_input_tokens,
+            "llm_output_tokens": result.llm_output_tokens,
+        },
+        "jobs": [
+            {
+                "id": s.posting.job_id,
+                "title": s.posting.title,
+                "url": s.posting.url,
+                "pay": s.posting.salary or s.card.salary,
+                "type": s.posting.job_type or s.card.job_type,
+                "hours": s.posting.hours_per_week,
+                "posted": s.card.posted_at or s.posting.date_updated,
+                "rank": round(s.rank, 2),
+                "fit": round(s.fit, 2),
+                "appeal": round(s.appeal, 2),
+                "scam": round(s.scam, 2),
+                "summary": s.summary or summarize(s.posting.description),
+                "summary_by_llm": s.summary is not None,
+                "matching_skills": matching_skills(s.posting, profile),
+                "skills": s.posting.skills,
+                "shortlisted": id(s) in shortlisted,
+            }
+            for s in result.scored
+        ],
+        "hidden": [
+            {"id": j, "title": cards[j].title, "url": cards[j].url, "fit_probability": round(p, 2)}
+            for j, p in sorted(result.hidden.items(), key=lambda x: -x[1])
+        ],
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ojagent.triage", description=__doc__.split("\n\n")[0])
     parser.add_argument("--pages", type=int, default=1, help="Search pages to scan, 30 postings each.")
@@ -369,8 +415,11 @@ def main(argv: list[str] | None = None) -> int:
     path = settings.out_dir / f"triage-{datetime.now():%Y%m%d-%H%M%S}-{mode}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(report, encoding="utf-8")
+    data = json.dumps(to_json(result, profile), ensure_ascii=False, indent=1)
+    path.with_suffix(".json").write_text(data, encoding="utf-8")
+    (settings.out_dir / "latest.json").write_text(data, encoding="utf-8")  # read by ui/
     print(report.split("## Shortlist")[0])
-    print(f"Report: {path}")
+    print(f"Report: {path}\nData:   {settings.out_dir / 'latest.json'} (open with: cd ui && npm run dev)")
     return 0
 
 
