@@ -37,6 +37,7 @@ Software engineer focused on backend development, AI systems, and cloud deployme
 - ORM & migrations: SQLAlchemy, Alembic
 - Cloud & DevOps: AWS (S3, DynamoDB, SageMaker), Azure, GCP, Docker, GitHub Actions, CI/CD, Git
 - AI & data: LLM fine-tuning and extraction, tool calling, embeddings, RAG, ETL pipelines, LangChain, OpenAI API, Anthropic API, Pandas, Qdrant
+- AI coding tools: Claude Code, Codex (used on every project above, from architecture and planning through implementation)
 - Computer vision & ML: YOLO11n, Roboflow datasets, PyTorch, scikit-learn, Tesseract OCR
 - Testing: pytest
 
