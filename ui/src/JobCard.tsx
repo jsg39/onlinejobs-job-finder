@@ -6,11 +6,22 @@ interface Props {
   onStatus: (status: Status | null) => void;
 }
 
-function formatPosted(posted: string | null): string | null {
+function ago(d: Date): string {
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+/** "Oct 13, 4:49 AM · 5h ago" in the viewer's timezone. */
+function formatPosted(posted: string | null): { text: string; title?: string } | null {
   if (!posted) return null;
-  const d = new Date(posted.replace(" ", "T"));
-  if (Number.isNaN(d.getTime())) return posted;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const d = new Date(posted);
+  if (Number.isNaN(d.getTime())) return { text: posted };
+  const when = d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return { text: `${when} · ${ago(d)}`, title: d.toString() };
 }
 
 function Meter({ label, value }: { label: string; value: number }) {
@@ -27,7 +38,7 @@ function Meter({ label, value }: { label: string; value: number }) {
 
 export default function JobCard({ job, status, onStatus }: Props) {
   const posted = formatPosted(job.posted);
-  const meta = [job.type, job.hours && `${job.hours} hrs/wk`, posted && `Posted ${posted}`].filter(Boolean);
+  const meta = [job.type, job.hours && `${job.hours} hrs/wk`].filter(Boolean);
 
   return (
     <article className={`card${status ? ` is-${status}` : ""}`}>
@@ -41,6 +52,11 @@ export default function JobCard({ job, status, onStatus }: Props) {
             {meta.map((m) => (
               <span key={m as string}>{m}</span>
             ))}
+            {posted && (
+              <time dateTime={job.posted ?? undefined} title={posted.title}>
+                Posted {posted.text}
+              </time>
+            )}
           </div>
         </div>
         <div className="rank" aria-label={`Match ${job.rank.toFixed(1)} out of 4`}>
@@ -54,10 +70,32 @@ export default function JobCard({ job, status, onStatus }: Props) {
         <Meter label="Appeal" value={job.appeal} />
       </div>
 
-      <p className="summary">
-        {job.summary}
-        {!job.summary_by_llm && <span className="source"> (from the posting)</span>}
-      </p>
+      {job.brief ? (
+        <div className="brief">
+          <p className="role">{job.brief.role}</p>
+          {(job.brief.fits.length > 0 || job.brief.gaps.length > 0) && (
+            <ul className="bullets">
+              {job.brief.fits.map((f) => (
+                <li key={f} className="fit">
+                  <span aria-label="Fits">✓</span>
+                  {f}
+                </li>
+              ))}
+              {job.brief.gaps.map((g) => (
+                <li key={g} className="gap">
+                  <span aria-label="Gap">△</span>
+                  {g}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : (
+        <p className="summary">
+          {job.snippet}
+          <span className="source"> (from the posting)</span>
+        </p>
+      )}
 
       {job.matching_skills.length > 0 && (
         <ul className="skills" aria-label="Skills you have">

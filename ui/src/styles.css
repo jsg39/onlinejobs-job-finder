@@ -257,3 +257,12 @@ details summary:hover { color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   .progress-fill.indeterminate { animation: none; }
 }
+
+/* brief */
+.brief { margin-top: 12px; }
+.role { margin: 0; color: var(--text); font-weight: 500; }
+.bullets { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.bullets li { display: flex; gap: 8px; color: #c9ced8; }
+.bullets li span { flex-shrink: 0; width: 14px; text-align: center; font-weight: 700; }
+.bullets .fit span { color: var(--good); }
+.bullets .gap span { color: var(--warn); }

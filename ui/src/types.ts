@@ -7,16 +7,22 @@ export interface Job {
   pay: string | null;
   type: string | null;
   hours: string | null;
-  posted: string | null;
+  posted: string | null; // ISO with offset, e.g. 2026-10-13T04:49:34+08:00
   rank: number; // 0-4, mean of fit and appeal
   fit: number; // 0-4: would they hire me?
   appeal: number; // 0-4: would I want it?
   scam: number; // 0-1
-  summary: string;
-  summary_by_llm: boolean;
+  brief: Brief | null; // LLM-written; null when no LLM was available
+  snippet: string; // the posting's opening lines, used when there is no brief
   matching_skills: string[];
   skills: string[];
   shortlisted: boolean;
+}
+
+export interface Brief {
+  role: string;
+  fits: string[];
+  gaps: string[];
 }
 
 export interface HiddenJob {
