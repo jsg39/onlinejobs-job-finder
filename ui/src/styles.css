@@ -266,3 +266,75 @@ details summary:hover { color: var(--text); }
 .bullets li span { flex-shrink: 0; width: 14px; text-align: center; font-weight: 700; }
 .bullets .fit span { color: var(--good); }
 .bullets .gap span { color: var(--warn); }
+
+/* filters */
+.filters {
+  margin: -4px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 24px; }
+.filter { display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.filter strong { color: var(--text); }
+.filter input[type="range"] { width: 180px; accent-color: var(--accent); }
+.filter select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+.checks { display: grid; gap: 4px; font-size: 13.5px; color: var(--muted); }
+.checks label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.checks input { accent-color: var(--accent); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.chip {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.filter-summary { margin: 10px 0 0; font-size: 13px; }
+.pay-approx { color: var(--muted); font-size: 13px; border-bottom: 1px dotted var(--muted); }
+
+/* tooltips */
+.tip { position: relative; display: inline-flex; cursor: help; outline: none; }
+.meter-label .tip,
+.filter .tip { border-bottom: 1px dotted var(--muted); }
+.tip-bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 10;
+  width: max-content;
+  max-width: 280px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #222a3a;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+.card-head > .tip .tip-bubble { left: auto; right: 0; }
+.tip:hover .tip-bubble,
+.tip:focus-visible .tip-bubble { opacity: 1; visibility: visible; }

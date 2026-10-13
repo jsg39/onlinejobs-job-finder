@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getActiveRun, getLatest, getRun, startRun } from "./api";
+import FilterBar from "./FilterBar";
+import { passes, useFilters } from "./filters";
 import JobCard from "./JobCard";
 import SearchPanel from "./SearchPanel";
 import type { Job, Run, RunStatus } from "./types";
 import { useStatuses } from "./useStatuses";
 
-type Tab = "foryou" | "applied" | "dismissed" | "below";
+type Tab = "foryou" | "applied" | "dismissed";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "foryou", label: "For you" },
   { id: "applied", label: "Applied" },
   { id: "dismissed", label: "Not interested" },
-  { id: "below", label: "Below the bar" },
 ];
 const POLL_MS = 1500;
 
@@ -22,6 +23,7 @@ export default function App() {
   const [backendDown, setBackendDown] = useState(false);
   const [tab, setTab] = useState<Tab>("foryou");
   const { statuses, setStatus } = useStatuses();
+  const [filters, setFilters] = useFilters();
 
   useEffect(() => {
     getLatest().then(setRun).catch(() => {});
@@ -58,15 +60,25 @@ export default function App() {
     }
   }, []);
 
-  const groups = useMemo(() => {
-    const g: Record<Tab, Job[]> = { foryou: [], applied: [], dismissed: [], below: [] };
+  // "For you" is every unmarked job that passes the user's filters, best match first.
+  const { groups, unmarked } = useMemo(() => {
+    const g: Record<Tab, Job[]> = { foryou: [], applied: [], dismissed: [] };
+    let unmarked = 0;
     for (const job of run?.jobs ?? []) {
       const s = statuses[job.id];
       if (s) g[s].push(job);
-      else g[job.shortlisted ? "foryou" : "below"].push(job);
+      else {
+        unmarked++;
+        if (passes(job, filters)) g.foryou.push(job);
+      }
     }
-    return g;
-  }, [run, statuses]);
+    return { groups: g, unmarked };
+  }, [run, statuses, filters]);
+
+  const jobTypes = useMemo(
+    () => [...new Set((run?.jobs ?? []).map((j) => j.type).filter((t): t is string => !!t))].sort(),
+    [run],
+  );
 
   const jobs = groups[tab];
 
@@ -109,14 +121,24 @@ export default function App() {
             ))}
           </nav>
 
-          {tab === "below" && jobs.length > 0 && (
-            <p className="muted note">Read and scored, but under the {run.min_rank}/4 match bar or flagged as risky.</p>
+          {tab === "foryou" && (
+            <FilterBar
+              filters={filters}
+              onChange={setFilters}
+              jobTypes={jobTypes}
+              shown={groups.foryou.length}
+              total={unmarked}
+            />
           )}
 
           <section className="list">
             {jobs.length === 0 ? (
               <p className="muted empty-tab">
-                {tab === "foryou" ? "You're all caught up. Search again later for new postings." : "Nothing here."}
+                {tab === "foryou"
+                  ? unmarked
+                    ? "No jobs match these filters. Try a lower match or pay."
+                    : "You're all caught up. Search again later for new postings."
+                  : "Nothing here."}
               </p>
             ) : (
               jobs.map((job) => (

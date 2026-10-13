@@ -1,3 +1,4 @@
+import Tip, { TIPS } from "./Tip";
 import type { Job, Status } from "./types";
 
 interface Props {
@@ -24,10 +25,26 @@ function formatPosted(posted: string | null): { text: string; title?: string } |
   return { text: `${when} · ${ago(d)}`, title: d.toString() };
 }
 
-function Meter({ label, value }: { label: string; value: number }) {
+function usd(n: number) {
+  return `$${n.toLocaleString()}`;
+}
+
+/** "≈ $1,123–1,498/mo", shown when the posted pay isn't already USD per month. */
+function approxPay(job: Job): string | null {
+  const p = job.pay_usd_month;
+  if (!p) return null;
+  const range = p.min === p.max ? usd(p.min) : `${usd(p.min)}–${p.max.toLocaleString()}`;
+  const text = (job.pay ?? "").toLowerCase();
+  const alreadyMonthlyUsd = text.includes("$") && /month|\bmo\b/.test(text) && !/aud|cad|sgd|nzd/.test(text);
+  return alreadyMonthlyUsd ? null : `≈ ${range}/mo`;
+}
+
+function Meter({ label, value, tip }: { label: string; value: number; tip: string }) {
   return (
-    <div className="meter" title={`${label} ${value.toFixed(1)} / 4`}>
-      <span className="meter-label">{label}</span>
+    <div className="meter">
+      <span className="meter-label">
+        <Tip tip={tip}>{label}</Tip>
+      </span>
       <span className="meter-track">
         <span className="meter-fill" style={{ width: `${(value / 4) * 100}%` }} />
       </span>
@@ -49,6 +66,11 @@ export default function JobCard({ job, status, onStatus }: Props) {
           </a>
           <div className="meta">
             <span className="pay">{job.pay || "Pay not listed"}</span>
+            {approxPay(job) && (
+              <Tip tip={TIPS.pay}>
+                <span className="pay-approx">{approxPay(job)}</span>
+              </Tip>
+            )}
             {meta.map((m) => (
               <span key={m as string}>{m}</span>
             ))}
@@ -59,15 +81,17 @@ export default function JobCard({ job, status, onStatus }: Props) {
             )}
           </div>
         </div>
-        <div className="rank" aria-label={`Match ${job.rank.toFixed(1)} out of 4`}>
-          <strong>{job.rank.toFixed(1)}</strong>
-          <span>match</span>
-        </div>
+        <Tip tip={TIPS.match}>
+          <div className="rank" aria-label={`Match ${job.rank.toFixed(1)} out of 4`}>
+            <strong>{job.rank.toFixed(1)}</strong>
+            <span>match</span>
+          </div>
+        </Tip>
       </header>
 
       <div className="meters">
-        <Meter label="Fit" value={job.fit} />
-        <Meter label="Appeal" value={job.appeal} />
+        <Meter label="Fit" value={job.fit} tip={TIPS.fit} />
+        <Meter label="Appeal" value={job.appeal} tip={TIPS.appeal} />
       </div>
 
       {job.brief ? (
