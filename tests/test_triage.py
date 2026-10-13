@@ -146,6 +146,7 @@ def test_json_export_marks_the_shortlist(source):
     data = to_json(triage(source, FakeJev({"100": 0.9, "200": 0.05}, FITS), PROFILE), PROFILE)
     assert [(j["id"], j["shortlisted"]) for j in data["jobs"]] == [("100", True)]
     assert data["jobs"][0]["url"] == PYTHON_JOB.url and data["jobs"][0]["pay"] == "$1,000/month"
+    assert data["jobs"][0]["pay_usd_month"] == {"min": 1000, "max": 1000}
     assert data["hidden"][0]["id"] == "200" and data["stats"]["scanned"] == 2
 
 

@@ -7,7 +7,7 @@ Searches the "python" keyword by default. With Jev: stage 1 scores every search 
 one call per page and drops clear mismatches; the rest are fetched (5 s crawl delay
 each) and Jev scores the full text for fit (would they hire the candidate?), appeal
 (would the candidate want it?), and a scam signal. The shortlist is ranked by the mean
-of fit and appeal, and only shortlisted jobs go to the LLM for a summary. Without Jev
+of fit and appeal, and only jobs at or near the shortlist go to the LLM for a summary. Without Jev
 the LLM has to read and score every posting. Time and LLM tokens are recorded for both.
 """
 
@@ -25,6 +25,7 @@ from datetime import datetime
 from .config import ROOT, load_settings
 from .llm import LLM, OpenAICompatibleLLM
 from .models import JobPosting, JobSummary
+from .pay import usd_per_month
 from .prefilter import JevPrefilter
 from .scraper import CRAWL_DELAY_SECONDS, JobSource, OnlineJobsClient
 
@@ -224,6 +225,7 @@ def triage(
     keyword: str | None = "python",
     card_threshold: float = 0.2,
     min_rank: float = 2.5,
+    summarize_from: float = 2.0,
     progress: Callable[[str, int, int], None] | None = None,
 ) -> TriageResult:
     """With `jev`, Jev screens and scores and the LLM (optional) summarizes the shortlist.
@@ -292,8 +294,10 @@ def triage(
     result = TriageResult(cards, hidden, scored, failed, timings, used_jev=jev is not None, min_rank=min_rank)
     if jev and ask:
         t = time.perf_counter()
-        for i, s in enumerate(result.shortlist):
-            report("summarize", i, len(result.shortlist))
+        # A little below the shortlist bar, so a user who lowers their filter still gets briefs.
+        to_brief = [s for s in result.scored if s.rank >= min(summarize_from, min_rank) and s.scam < 0.5]
+        for i, s in enumerate(to_brief):
+            report("summarize", i, len(to_brief))
             try:
                 s.brief = Brief.from_llm(ask(SUMMARY_PROMPT, _job(s.card, s.posting)))
             except Exception:  # fall back to the posting's opening lines
@@ -407,6 +411,7 @@ def to_json(result: TriageResult, profile: str) -> dict:
                 "title": s.posting.title,
                 "url": s.posting.url,
                 "pay": s.posting.salary or s.card.salary,
+                "pay_usd_month": usd_per_month(s.posting.salary or s.card.salary, s.posting.hours_per_week),
                 "type": s.posting.job_type or s.card.job_type,
                 "hours": s.posting.hours_per_week,
                 "posted": posted_iso(s.card.posted_at) or s.posting.date_updated,
