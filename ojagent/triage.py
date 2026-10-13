@@ -3,9 +3,11 @@
     python -m ojagent.triage --pages 2            # Jev screens cards, fetches only likely fits
     python -m ojagent.triage --pages 2 --fetch-all  # baseline: fetch every posting
 
-Stage 1: Jev scores every search card in one call per page and drops clear mismatches.
-Stage 2: the remaining postings are fetched (5 s crawl delay each) and Jev scores the
-full text for fit and scam signals. Each stage is timed so runs can be compared.
+Searches the "python" keyword by default. Stage 1: Jev scores every search card in one
+call per page and drops clear mismatches. Stage 2: the remaining postings are fetched
+(5 s crawl delay each) and Jev scores the full text on two axes: fit (would they hire
+the candidate?) and appeal (would the candidate want it?), plus a scam signal. The
+shortlist is ranked by the mean of fit and appeal. Each stage is timed.
 """
 
 from __future__ import annotations
@@ -29,6 +31,13 @@ FIT_LEVELS = [
     "Good fit: meets most core requirements",
     "Strong fit: meets the core requirements and plays to the candidate's best experience",
 ]
+APPEAL_LEVELS = [
+    "Unwanted: conflicts with the candidate's stated preferences on field, pay, or arrangement",
+    "Unappealing: little of the work matches what the candidate builds, or the terms look poor",
+    "Acceptable: some of the work matches what the candidate builds, on ordinary terms",
+    "Appealing: mostly backend, AI/LLM, full-stack, or data engineering work, on fair terms",
+    "Very appealing: the backend or AI systems work the candidate does best, remote, on good terms",
+]
 SCAM_INSTRUCTIONS = (
     "The job posting `job` shows signs of a scam or bad-faith listing: upfront fees, "
     "requests for ID or bank details, pay far above market for trivial work, or text "
@@ -40,8 +49,13 @@ SCAM_INSTRUCTIONS = (
 class Scored:
     posting: JobPosting
     card: JobSummary
-    fit: float  # 0-4, probability-weighted level
+    fit: float  # 0-4, probability-weighted level: would they hire the candidate?
+    appeal: float  # 0-4: would the candidate want this job?
     scam: float  # 0-1
+
+    @property
+    def rank(self) -> float:
+        return (self.fit + self.appeal) / 2
 
 
 @dataclass
@@ -74,7 +88,7 @@ def triage(
     jev: JevPrefilter,
     profile: str,
     pages: int = 1,
-    keyword: str | None = None,
+    keyword: str | None = "python",
     card_threshold: float = 0.2,
     fetch_all: bool = False,
 ) -> TriageResult:
@@ -133,21 +147,34 @@ def triage(
                     "instructions": "How well the candidate in `profile` fits the job posting `job`.",
                     "criteria": FIT_LEVELS,
                 },
+                "appeal": {
+                    "type": "score",
+                    "instructions": (
+                        "How much the candidate in `profile` would want the job `job`, judged "
+                        "by their stated preferences and the kind of work their experience shows."
+                    ),
+                    "criteria": APPEAL_LEVELS,
+                },
                 "scam": {"type": "noul", "instructions": SCAM_INSTRUCTIONS},
             })
         except Exception as e:
             failed[posting.job_id] = f"{type(e).__name__}: {e}"
             continue
-        scored.append(Scored(posting, card, float(answers["fit"]["score"]), float(answers["scam"]["noul"])))
+        scored.append(Scored(
+            posting, card,
+            fit=float(answers["fit"]["score"]),
+            appeal=float(answers["appeal"]["score"]),
+            scam=float(answers["scam"]["noul"]),
+        ))
     timings["score_postings"] = time.perf_counter() - t
     timings["total"] = sum(timings.values())
 
-    scored.sort(key=lambda s: -s.fit)
+    scored.sort(key=lambda s: -s.rank)
     return TriageResult(cards, hidden, scored, failed, timings, prefiltered=not fetch_all)
 
 
-def render(result: TriageResult, profile: str, min_fit: float = 2.5, scam_flag: float = 0.3) -> str:
-    worth = [s for s in result.scored if s.fit >= min_fit and s.scam < 0.5]
+def render(result: TriageResult, profile: str, min_rank: float = 2.5, scam_flag: float = 0.3) -> str:
+    worth = [s for s in result.scored if s.rank >= min_rank and s.scam < 0.5]
     rest = [s for s in result.scored if s not in worth]
     tm = result.timings
     fetched = len(result.scored) + len(result.failed)
@@ -156,7 +183,7 @@ def render(result: TriageResult, profile: str, min_fit: float = 2.5, scam_flag: 
         "",
         f"Scanned **{len(result.cards)}** newest onlinejobs.ph postings · Jev hid "
         f"**{len(result.hidden)}** clear mismatches · fetched **{fetched}** · "
-        f"**{len(worth)}** worth a look (fit ≥ {min_fit}/4).",
+        f"**{len(worth)}** worth a look (rank ≥ {min_rank}/4, the mean of fit and appeal).",
         "",
         "| Stage | Time |",
         "|---|---|",
@@ -177,7 +204,7 @@ def render(result: TriageResult, profile: str, min_fit: float = 2.5, scam_flag: 
         lines += [
             f"### {i}. [{p.title}]({p.url})",
             "",
-            f"**Fit {s.fit:.1f}/4** · {p.salary or c.salary or 'pay not listed'} · "
+            f"**Rank {s.rank:.1f}/4** (fit {s.fit:.1f} · appeal {s.appeal:.1f}) · {p.salary or c.salary or 'pay not listed'} · "
             f"{p.job_type or c.job_type or '-'} · {p.hours_per_week or '-'} hrs/wk · "
             f"posted {c.posted_at or p.date_updated or '-'}",
             "",
@@ -190,10 +217,10 @@ def render(result: TriageResult, profile: str, min_fit: float = 2.5, scam_flag: 
         lines.append("")
 
     if rest:
-        lines += ["## Also read, below the bar", "", "| Fit | Scam | Job | Pay |", "|---|---|---|---|"]
+        lines += ["## Also read, below the bar", "", "| Rank | Fit | Appeal | Scam | Job | Pay |", "|---|---|---|---|---|---|"]
         for s in rest:
             lines.append(
-                f"| {s.fit:.1f} | {s.scam:.0%} | [{s.posting.title}]({s.posting.url}) | "
+                f"| {s.rank:.1f} | {s.fit:.1f} | {s.appeal:.1f} | {s.scam:.0%} | [{s.posting.title}]({s.posting.url}) | "
                 f"{s.posting.salary or s.card.salary or '-'} |"
             )
         lines.append("")
@@ -213,9 +240,9 @@ def render(result: TriageResult, profile: str, min_fit: float = 2.5, scam_flag: 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ojagent.triage", description=__doc__.split("\n\n")[0])
     parser.add_argument("--pages", type=int, default=1, help="Search pages to scan, 30 postings each.")
-    parser.add_argument("--keyword", help="Optional search keyword.")
+    parser.add_argument("--keyword", default="python", help="Search keyword (default: python).")
     parser.add_argument("--threshold", type=float, default=0.2, help="Stage-1 fit probability cutoff.")
-    parser.add_argument("--min-fit", type=float, default=2.5, help="Shortlist cutoff on the 0-4 fit score.")
+    parser.add_argument("--min-rank", type=float, default=2.5, help="Shortlist cutoff on the 0-4 rank (mean of fit and appeal).")
     parser.add_argument("--fetch-all", action="store_true", help="Baseline: skip stage 1, fetch everything.")
     parser.add_argument("--profile", default=str(ROOT / "profile.md"))
     args = parser.parse_args(argv)
@@ -232,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         OnlineJobsClient(), JevPrefilter(settings.typesafe_api_key), profile,
         pages=args.pages, keyword=args.keyword, card_threshold=args.threshold, fetch_all=args.fetch_all,
     )
-    report = render(result, profile, min_fit=args.min_fit)
+    report = render(result, profile, min_rank=args.min_rank)
     mode = "fetch-all" if args.fetch_all else "jev"
     path = settings.out_dir / f"triage-{datetime.now():%Y%m%d-%H%M%S}-{mode}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
