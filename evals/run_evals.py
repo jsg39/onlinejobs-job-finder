@@ -1,6 +1,7 @@
 """Run the real agent loop against synthetic postings and score the outcomes.
 
     python -m evals.run_evals --model anthropic/claude-sonnet-5.5 --trials 3
+    python -m evals.run_evals --prefilter   # adds discover+jev (needs TYPESAFE_API_KEY)
 
 Scores come from what the tools saved (the database), never from the model's own
 summary, so a model that claims success without doing the work scores zero.
@@ -19,6 +20,7 @@ from ojagent.agent import Agent
 from ojagent.config import ROOT, load_settings
 from ojagent.llm import OpenAICompatibleLLM
 from ojagent.models import JobSummary
+from ojagent.prefilter import JevPrefilter
 from ojagent.store import Store
 from ojagent.verify import normalize
 
@@ -32,6 +34,9 @@ TASKS = {
     "assess_all": "Read and assess every posting in the latest search results, including ones "
     "that look irrelevant. Draft applications only for the good fits.",
 }
+# discover with Jev hiding clear mismatches first. Not combined with assess_all,
+# which requires reading every posting.
+PREFILTER_TASK = "discover+jev"
 PII_PATTERNS = [r"\+?63\s?9\d{2}", r"\b09\d{9}\b", r"parañaque|paranaque"]
 
 
@@ -83,14 +88,16 @@ def score_case(case: Case, store: Store, must_assess: bool = False) -> dict:
 
 def run_trial(model: str, settings, task: str) -> dict:
     store = Store()
+    prefilter = JevPrefilter(settings.typesafe_api_key) if task == PREFILTER_TASK else None
     agent = Agent(
         llm=OpenAICompatibleLLM(model, settings.api_key, settings.base_url),
         source=ScenarioSource(CASES),
         store=store,
         profile=(ROOT / "profile.md").read_text(encoding="utf-8"),
         max_steps=40,
+        prefilter=prefilter,
     )
-    result = agent.run(TASKS[task], max_jobs=10)
+    result = agent.run(TASKS["discover" if task == PREFILTER_TASK else task], max_jobs=10)
     cases = [score_case(c, store, must_assess=task == "assess_all") for c in CASES]
     return {
         "task": task,
@@ -103,6 +110,9 @@ def run_trial(model: str, settings, task: str) -> dict:
         "output_tokens": result.output_tokens,
         "cases": cases,
         "pass_rate": sum(c["passed"] for c in cases) / len(cases),
+        "prefiltered": sorted(result.prefiltered),
+        "prefilter_ms": prefilter.latencies_ms if prefilter else [],
+        "prefilter_errors": result.prefilter_errors,
     }
 
 
@@ -110,15 +120,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", action="append", help="Repeatable. Defaults to LLM_MODEL.")
     parser.add_argument("--trials", type=int, default=1)
+    parser.add_argument("--prefilter", action="store_true", help=f"Also run {PREFILTER_TASK}.")
     args = parser.parse_args(argv)
     settings = load_settings()
+    if args.prefilter and not settings.typesafe_api_key:
+        raise SystemExit("--prefilter needs TYPESAFE_API_KEY in .env")
+    tasks = list(TASKS) + ([PREFILTER_TASK] if args.prefilter else [])
     models = args.model or [settings.model]
     sys.stdout.reconfigure(encoding="utf-8")
 
     out = {"timestamp": datetime.now().isoformat(timespec="seconds"), "models": {}}
     for model in models:
         trials = []
-        for task in TASKS:
+        for task in tasks:
             for t in range(args.trials):
                 print(f"[{model}] {task} trial {t + 1}/{args.trials} ...", flush=True)
                 try:
@@ -140,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     print("\n| Model | Task | Case pass rate | Finished | Validator rejections | Steps | Tokens in/out |")
     print("|---|---|---|---|---|---|---|")
     for model, all_trials in out["models"].items():
-        for task in TASKS:
+        for task in tasks:
             trials = [t for t in all_trials if t["task"] == task]
             n = len(trials)
             print(
@@ -151,6 +165,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"{sum(t['input_tokens'] for t in trials) // n:,} / "
                 f"{sum(t['output_tokens'] for t in trials) // n:,} |"
             )
+    for model, all_trials in out["models"].items():
+        jev = [t for t in all_trials if t["task"] == PREFILTER_TASK and t.get("prefilter_ms")]
+        if jev:
+            ms = sorted(m for t in jev for m in t["prefilter_ms"])
+            hidden = sum(len(t["prefiltered"]) for t in jev) / len(jev)
+            print(f"\n{model} {PREFILTER_TASK}: hid {hidden:.1f}/{len(CASES)} postings per run, "
+                  f"Jev median {ms[len(ms) // 2]:.0f} ms")
     print("\nFailures:")
     for model, trials in out["models"].items():
         for i, t in enumerate(trials, 1):
