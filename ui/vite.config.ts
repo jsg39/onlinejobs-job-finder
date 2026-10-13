@@ -1,22 +1,8 @@
-import { readFile } from "node:fs/promises";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 
-// Serves the newest triage run (../out/latest.json) at /latest.json, re-read on every request.
-const latestRun = (): Plugin => ({
-  name: "latest-run",
-  configureServer(server) {
-    server.middlewares.use("/latest.json", async (_req, res) => {
-      try {
-        const body = await readFile(new URL("../out/latest.json", import.meta.url));
-        res.setHeader("Content-Type", "application/json");
-        res.end(body);
-      } catch {
-        res.statusCode = 404;
-        res.end(JSON.stringify({ error: "Run triage once to create out/latest.json:" }));
-      }
-    });
-  },
+// The FastAPI backend (uvicorn ojagent.api:app --port 8000) serves /api.
+export default defineConfig({
+  plugins: [react()],
+  server: { proxy: { "/api": "http://127.0.0.1:8000" } },
 });
-
-export default defineConfig({ plugins: [react(), latestRun()] });

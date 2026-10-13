@@ -200,3 +200,60 @@ details summary:hover { color: var(--text); }
   .card { padding: 16px; }
   .meter-track { width: 90px; }
 }
+
+/* search panel */
+.top { display: block; }
+.panel {
+  margin-bottom: 24px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.field { display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.field.grow { flex: 1 1 220px; }
+.field input,
+.field select {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+.field input:focus,
+.field select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.btn.find { height: 40px; padding: 0 18px; }
+
+.resume { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 14px; font-size: 13.5px; }
+.resume-name { color: var(--muted); }
+.resume-name strong { color: var(--text); font-weight: 600; }
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.link:hover { text-decoration: underline; }
+.link:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+
+.error { margin: 12px 0 0; color: #ff8a80; font-size: 13.5px; }
+.error code { color: var(--text); }
+
+.progress { margin-top: 16px; }
+.progress-text { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 13.5px; }
+.progress-track { height: 6px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.progress-fill { height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.4s ease; }
+.progress-fill.indeterminate { animation: slide 1.2s ease-in-out infinite; }
+@keyframes slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(330%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill.indeterminate { animation: none; }
+}

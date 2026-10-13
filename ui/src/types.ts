@@ -27,6 +27,7 @@ export interface HiddenJob {
 }
 
 export interface Run {
+  keyword?: string;
   generated_at: string;
   used_jev: boolean;
   min_rank: number;
@@ -45,3 +46,23 @@ export interface Run {
 }
 
 export type Status = "applied" | "dismissed";
+
+export interface ResumeInfo {
+  filename: string;
+  uploaded_at: string;
+  chars: number;
+}
+
+export interface RunStatus {
+  id: string;
+  keyword: string;
+  pages: number;
+  status: "running" | "done" | "error";
+  stage: string;
+  stage_label: string;
+  done: number;
+  total: number;
+  elapsed: number;
+  error: string | null;
+  result: Run | null;
+}
