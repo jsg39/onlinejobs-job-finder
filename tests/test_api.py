@@ -32,7 +32,7 @@ def client(tmp_path):
     app = create_app(
         make_source=lambda: FakeSource([PYTHON_JOB, DESIGN_JOB]),
         make_jev=lambda: RecordingJev({"100": 0.9, "200": 0.05}, FITS),
-        make_llm=lambda: FakeLLM({PYTHON_JOB.title: {"summary": "FastAPI backend work."}}),
+        make_llm=lambda: FakeLLM({PYTHON_JOB.title: {"role": "FastAPI backend work", "fits": ["FastAPI"]}}),
         profile_path=tmp_path / "profile.md",
         data_dir=tmp_path / "data",
         out_dir=tmp_path / "out",
@@ -58,7 +58,7 @@ def test_run_returns_ranked_jobs_and_saves_latest(client):
     run = wait(client, start.json()["id"])
     assert run["status"] == "done", run["error"]
     jobs = run["result"]["jobs"]
-    assert [j["id"] for j in jobs] == ["100"] and jobs[0]["summary"] == "FastAPI backend work."
+    assert [j["id"] for j in jobs] == ["100"] and jobs[0]["brief"]["role"] == "FastAPI backend work"
     assert run["result"]["keyword"] == "fastapi"
     assert client.get("/api/latest").json()["jobs"][0]["id"] == "100"
 

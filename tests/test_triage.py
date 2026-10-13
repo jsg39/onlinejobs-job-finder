@@ -57,30 +57,37 @@ def test_hidden_cards_are_never_fetched(source):
 
 def test_no_jev_baseline_has_the_llm_score_everything(source):
     llm = FakeLLM({
-        PYTHON_JOB.title: {"fit": 3, "appeal": 4, "scam": 0.05, "summary": "FastAPI backend role."},
-        DESIGN_JOB.title: "Sure! {\"fit\": 0, \"appeal\": 0, \"scam\": 0.1, \"summary\": \"Design.\"}",
+        PYTHON_JOB.title: {"fit": 3, "appeal": 4, "scam": 0.05, "role": "FastAPI backend role", "fits": ["FastAPI APIs"]},
+        DESIGN_JOB.title: "Sure! {\"fit\": 0, \"appeal\": 0, \"scam\": 0.1, \"role\": \"Design\"}",
     })
     result = triage(source, None, PROFILE, llm=llm)
     assert source.fetches == ["100", "200"] and not result.hidden
     assert [s.posting.job_id for s in result.scored] == ["100", "200"]
-    assert result.scored[0].summary == "FastAPI backend role." and result.scored[0].rank == 3.5
+    assert result.scored[0].brief.role == "FastAPI backend role" and result.scored[0].rank == 3.5
     assert (result.llm_calls, result.llm_input_tokens) == (2, 2000)
     assert "screen_cards" not in result.timings
 
 
 def test_with_jev_the_llm_only_summarizes_the_shortlist(source):
-    llm = FakeLLM({PYTHON_JOB.title: {"summary": "Backend APIs; strong FastAPI match; Kubernetes gap."}})
+    llm = FakeLLM({PYTHON_JOB.title: {
+        "role": "Backend APIs for a logistics product.",
+        "fits": ["Built REST APIs with FastAPI and PostgreSQL"],
+        "gaps": ["Kubernetes"],
+    }})
     result = triage(source, FakeJev({"100": 0.9, "200": 0.9}, FITS), PROFILE, llm=llm)
     assert llm.titles == [PYTHON_JOB.title]
     assert result.llm_calls == 1
     md = render(result, PROFILE)
-    assert "Kubernetes gap." in md.split("## Shortlist")[1] and "LLM: **1** calls" in md
+    shortlist = md.split("## Shortlist")[1]
+    assert "Backend APIs for a logistics product\n" in shortlist
+    assert "- ✓ Built REST APIs with FastAPI and PostgreSQL" in shortlist and "- △ Kubernetes" in shortlist
+    assert "LLM: **1** calls" in md
 
 
 def test_bad_llm_reply_falls_back_to_posting_text(source):
     llm = FakeLLM({PYTHON_JOB.title: "no json here"})
     result = triage(source, FakeJev({"100": 0.9, "200": 0.05}, FITS), PROFILE, llm=llm)
-    assert result.scored[0].summary is None
+    assert result.scored[0].brief is None
     assert "We need a backend developer." in render(result, PROFILE).split("## Shortlist")[1]
 
 
@@ -140,3 +147,20 @@ def test_json_export_marks_the_shortlist(source):
     assert [(j["id"], j["shortlisted"]) for j in data["jobs"]] == [("100", True)]
     assert data["jobs"][0]["url"] == PYTHON_JOB.url and data["jobs"][0]["pay"] == "$1,000/month"
     assert data["hidden"][0]["id"] == "200" and data["stats"]["scanned"] == 2
+
+
+def test_brief_caps_bullets_and_length():
+    from ojagent.triage import Brief
+
+    long = " ".join(["word"] * 30)
+    b = Brief.from_llm({"role": long, "fits": ["a", "b", "c"], "gaps": "Kubernetes"})
+    assert b.role.endswith("…") and len(b.role.split()) == 18
+    assert b.fits == ["a", "b"] and b.gaps == ["Kubernetes"]
+    assert Brief.from_llm({"fits": ["x"]}) is None
+
+
+def test_posted_time_is_marked_as_philippine_time(source):
+    from ojagent.triage import posted_iso
+
+    assert posted_iso("2026-10-13 04:49:34") == "2026-10-13T04:49:34+08:00"
+    assert posted_iso(None) is None and posted_iso("yesterday") == "yesterday"
