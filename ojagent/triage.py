@@ -19,6 +19,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 from datetime import datetime
 
 from .config import ROOT, load_settings
@@ -180,11 +181,14 @@ def triage(
     keyword: str | None = "python",
     card_threshold: float = 0.2,
     min_rank: float = 2.5,
+    progress: Callable[[str, int, int], None] | None = None,
 ) -> TriageResult:
     """With `jev`, Jev screens and scores and the LLM (optional) summarizes the shortlist.
-    With `jev=None`, the LLM must score and summarize every posting."""
+    With `jev=None`, the LLM must score and summarize every posting.
+    `progress(stage, done, total)` is called as work advances."""
     if jev is None and llm is None:
         raise ValueError("need Jev, an LLM, or both")
+    report = progress or (lambda stage, done, total: None)
     ask = _LLMJson(llm, profile) if llm else None
     timings: dict[str, float] = {}
 
@@ -192,6 +196,7 @@ def triage(
     cards: list[JobSummary] = []
     seen: set[str] = set()
     for page in range(pages):
+        report("search", page, pages)
         for c in source.search(keyword, page):
             if c.job_id not in seen:
                 seen.add(c.job_id)
@@ -201,6 +206,7 @@ def triage(
     hidden: dict[str, float] = {}
     if jev:
         t = time.perf_counter()
+        report("screen", 0, len(cards))
         for i in range(0, len(cards), 30):
             try:
                 probs = jev.fit_probabilities(profile, cards[i : i + 30])
@@ -212,9 +218,9 @@ def triage(
     t = time.perf_counter()
     postings: list[tuple[JobSummary, JobPosting]] = []
     failed: dict[str, str] = {}
-    for c in cards:
-        if c.job_id in hidden:
-            continue
+    to_fetch = [c for c in cards if c.job_id not in hidden]
+    for i, c in enumerate(to_fetch):
+        report("fetch", i, len(to_fetch))
         try:
             postings.append((c, source.get_job(c.job_id)))
         except Exception as e:  # closed or malformed postings
@@ -223,7 +229,8 @@ def triage(
 
     t = time.perf_counter()
     scored: list[Scored] = []
-    for card, posting in postings:
+    for i, (card, posting) in enumerate(postings):
+        report("score", i, len(postings))
         job = _job(card, posting)
         try:
             if jev:
@@ -242,7 +249,8 @@ def triage(
     result = TriageResult(cards, hidden, scored, failed, timings, used_jev=jev is not None, min_rank=min_rank)
     if jev and ask:
         t = time.perf_counter()
-        for s in result.shortlist:
+        for i, s in enumerate(result.shortlist):
+            report("summarize", i, len(result.shortlist))
             try:
                 s.summary = str(ask(SUMMARY_PROMPT, _job(s.card, s.posting))["summary"])
             except Exception:  # fall back to the posting's opening lines
@@ -254,6 +262,7 @@ def triage(
         )
     timings["total"] = sum(v for k, v in timings.items() if k != "total")
     scored.sort(key=lambda s: -s.rank)
+    report("done", 1, 1)
     return result
 
 
