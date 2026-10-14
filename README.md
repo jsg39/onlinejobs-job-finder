@@ -49,7 +49,7 @@ A search takes a few minutes, because every posting that passes the Jev screen i
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/runs` | Start a search: `{"keyword": "python", "pages": 1}` (1–3 pages of 30). Returns 409 if one is already running. |
+| `POST /api/runs` | Start a search: `{"keyword": "python", "postings": 30}` (the 5–90 newest postings). Returns 409 if one is already running. |
 | `GET /api/runs/{id}` · `GET /api/runs/active` | Progress (stage, done/total, elapsed), and the results when done. |
 | `GET /api/latest` | The most recent results (also saved as `out/latest.json`). |
 | `GET` · `PUT /api/profile` | The editable profile, what's been learned from your marks, and the composed text Jev ranks against. |
@@ -61,7 +61,7 @@ Without the UI, the same pipeline runs from the command line and writes a Markdo
 ```bash
 python -m ojagent.triage                     # Jev screens and ranks, the LLM summarizes the shortlist
 python -m ojagent.triage --no-jev            # baseline: the LLM scores and summarizes everything
-python -m ojagent.triage --keyword fastapi --pages 2
+python -m ojagent.triage --keyword fastapi --limit 45
 ```
 
 ## Architecture
