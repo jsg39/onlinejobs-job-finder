@@ -115,7 +115,7 @@ export default function FilterBar({ filters: f, onChange, jobTypes, shown, total
           </label>
 
           {jobTypes.length > 1 && (
-            <div className="filter">
+            <div className="filter types">
               <span>Job type</span>
               <div className="chips" role="group" aria-label="Job type">
                 {jobTypes.map((t) => (
