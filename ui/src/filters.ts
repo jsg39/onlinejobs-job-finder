@@ -1,9 +1,23 @@
 import { useEffect, useState } from "react";
 import type { Job } from "./types";
 
+export type PayPeriod = "hour" | "month" | "year";
+export const PERIOD_SUFFIX: Record<PayPeriod, string> = { hour: "/hr", month: "/mo", year: "/yr" };
+const FULL_TIME_HOURS_PER_MONTH = 40 * (52 / 12);
+
+/** A job's approximate USD pay range in the chosen period, or null if unknown. */
+export function payIn(job: Job, period: PayPeriod): { min: number; max: number } | null {
+  const m = job.pay_usd_month;
+  if (!m) return null;
+  if (period === "month") return m;
+  if (period === "year") return { min: m.min * 12, max: m.max * 12 };
+  return job.pay_usd_hour ?? { min: m.min / FULL_TIME_HOURS_PER_MONTH, max: m.max / FULL_TIME_HOURS_PER_MONTH };
+}
+
 export interface Filters {
   minMatch: number; // 0-4
-  minPay: number; // approximate USD/month, 0 = any
+  minPay: number; // approximate USD in payPeriod units, 0 = any
+  payPeriod: PayPeriod;
   includeUnlistedPay: boolean;
   types: string[]; // empty = all
   hideRisky: boolean;
@@ -12,6 +26,7 @@ export interface Filters {
 export const DEFAULT_FILTERS: Filters = {
   minMatch: 2.5,
   minPay: 0,
+  payPeriod: "month",
   includeUnlistedPay: true,
   types: [],
   hideRisky: true,
@@ -43,12 +58,14 @@ export function passes(job: Job, f: Filters): boolean {
   if (f.types.length && !f.types.includes(job.type ?? "")) return false;
   if (f.minPay > 0) {
     // Ranges pass if their top end reaches the floor: "$800-1,200" can still pay $1,000.
-    if (!job.pay_usd_month) return f.includeUnlistedPay;
-    if (job.pay_usd_month.max < f.minPay) return false;
+    const pay = payIn(job, f.payPeriod);
+    if (!pay) return f.includeUnlistedPay;
+    if (pay.max < f.minPay) return false;
   }
   return true;
 }
 
 export function isDefault(f: Filters): boolean {
-  return JSON.stringify(f) === JSON.stringify(DEFAULT_FILTERS);
+  // The pay period is a display unit, not a filter, so it doesn't count.
+  return JSON.stringify({ ...f, payPeriod: "month" }) === JSON.stringify(DEFAULT_FILTERS);
 }

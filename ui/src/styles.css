@@ -292,7 +292,7 @@ details summary:hover { color: var(--text); }
 .filters:not(.closed) .caret { transform: rotate(90deg); }
 .filters-body {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(170px, 1fr) auto auto;
+  grid-template-columns: minmax(160px, 1fr) 170px auto auto;
   align-items: end;
   gap: 14px 24px;
   padding: 4px 16px 16px;
@@ -331,6 +331,43 @@ details summary:hover { color: var(--text); }
 }
 .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .chip { white-space: nowrap; }
+.money {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 14px;
+}
+.money:focus-within { border-color: var(--accent); outline: 2px solid var(--accent-soft); }
+.money input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  -moz-appearance: textfield;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+.money .period {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.money .period:focus { color: var(--text); outline: none; }
+.money input::-webkit-inner-spin-button,
+.money input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .pay-approx { color: var(--muted); font-size: 13px; border-bottom: 1px dotted var(--muted); }
 @media (max-width: 760px) {
   .filters-body { grid-template-columns: 1fr 1fr; }
@@ -342,8 +379,10 @@ details summary:hover { color: var(--text); }
 
 /* tooltips */
 .tip { position: relative; display: inline-flex; cursor: help; outline: none; }
-.meter-label .tip,
 .filter .tip { border-bottom: 1px dotted var(--muted); }
+.meters .tip { padding: 4px 6px; margin: -4px -6px; border-radius: 6px; transition: background 0.12s; }
+.meters .tip:hover,
+.meters .tip:focus-visible { background: var(--surface-2); }
 .tip-bubble {
   position: absolute;
   bottom: calc(100% + 8px);

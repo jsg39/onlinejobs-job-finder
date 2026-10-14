@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { DEFAULT_FILTERS, type Filters, isDefault } from "./filters";
+import { DEFAULT_FILTERS, type Filters, isDefault, PERIOD_SUFFIX, type PayPeriod } from "./filters";
 import Tip, { TIPS } from "./Tip";
 
-const MAX_PAY = 3000; // approximate USD/month
-const PAY_FLOOR = 900; // USD/month default
 const OPEN_KEY = "ojagent:filtersOpen";
 // onlinejobs.ph's "Any" job type means the employer is flexible on hours.
 const TYPE_LABELS: Record<string, string> = { Any: "Flexible" };
@@ -88,20 +86,32 @@ export default function FilterBar({ filters: f, onChange, jobTypes, shown, total
           <label className="filter pay">
             <span>
               <Tip tip={TIPS.pay}>Min pay</Tip>
-              <strong>{f.minPay ? `≈ $${f.minPay.toLocaleString()}+/mo` : "Any"}</strong>
             </span>
-            <input
-              type="range"
-              min={0}
-              max={MAX_PAY}
-              step={100}
-              list="pay-ticks"
-              value={f.minPay}
-              onChange={(e) => set({ minPay: Number(e.target.value) })}
-            />
-            <datalist id="pay-ticks">
-              <option value={PAY_FLOOR} label="Your floor" />
-            </datalist>
+            <span className="money">
+              <span aria-hidden>$</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={f.payPeriod === "hour" ? 1 : f.payPeriod === "year" ? 1000 : 100}
+                placeholder="Any"
+                value={f.minPay || ""}
+                onChange={(e) => set({ minPay: Math.max(0, Number(e.target.value) || 0) })}
+                aria-label="Minimum pay in US dollars"
+              />
+              <select
+                className="period"
+                value={f.payPeriod}
+                onChange={(e) => set({ payPeriod: e.target.value as PayPeriod, minPay: 0 })}
+                aria-label="Pay period"
+              >
+                {(Object.keys(PERIOD_SUFFIX) as PayPeriod[]).map((p) => (
+                  <option key={p} value={p}>
+                    {PERIOD_SUFFIX[p]}
+                  </option>
+                ))}
+              </select>
+            </span>
           </label>
 
           {jobTypes.length > 1 && (

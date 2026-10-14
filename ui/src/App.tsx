@@ -142,7 +142,13 @@ export default function App() {
               </p>
             ) : (
               jobs.map((job) => (
-                <JobCard key={job.id} job={job} status={statuses[job.id]} onStatus={(s) => setStatus(job.id, s)} />
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  payPeriod={filters.payPeriod}
+                  status={statuses[job.id]}
+                  onStatus={(s) => setStatus(job.id, s)}
+                />
               ))
             )}
           </section>

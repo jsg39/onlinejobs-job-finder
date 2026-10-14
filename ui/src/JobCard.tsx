@@ -1,8 +1,10 @@
+import { PERIOD_SUFFIX, type PayPeriod, payIn } from "./filters";
 import Tip, { TIPS } from "./Tip";
 import type { Job, Status } from "./types";
 
 interface Props {
   job: Job;
+  payPeriod: PayPeriod;
   status?: Status;
   onStatus: (status: Status | null) => void;
 }
@@ -25,35 +27,39 @@ function formatPosted(posted: string | null): { text: string; title?: string } |
   return { text: `${when} · ${ago(d)}`, title: d.toString() };
 }
 
-function usd(n: number) {
-  return `$${n.toLocaleString()}`;
+function money(n: number, period: PayPeriod) {
+  const digits = period === "hour" && n < 100 ? 2 : 0;
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: digits });
 }
 
-/** "≈ $1,123–1,498/mo", shown when the posted pay isn't already USD per month. */
-function approxPay(job: Job): string | null {
-  const p = job.pay_usd_month;
+/** "≈ $1,123–1,498/mo" in the period the user filters by; hidden when it would repeat the posted pay. */
+function approxPay(job: Job, period: PayPeriod): string | null {
+  const p = payIn(job, period);
   if (!p) return null;
-  const range = p.min === p.max ? usd(p.min) : `${usd(p.min)}–${p.max.toLocaleString()}`;
   const text = (job.pay ?? "").toLowerCase();
-  const alreadyMonthlyUsd = text.includes("$") && /month|\bmo\b/.test(text) && !/aud|cad|sgd|nzd/.test(text);
-  return alreadyMonthlyUsd ? null : `≈ ${range}/mo`;
+  const usd = text.includes("$") && !/aud|cad|sgd|nzd/.test(text);
+  const postedIn: PayPeriod | null = /hour|\bhr\b/.test(text) ? "hour" : /year|annual/.test(text) ? "year" : /month|\bmo\b/.test(text) ? "month" : null;
+  if (usd && postedIn === period) return null;
+  const range = p.min === p.max ? money(p.min, period) : `${money(p.min, period)}–${money(p.max, period)}`;
+  return `≈ $${range}${PERIOD_SUFFIX[period]}`;
 }
 
 function Meter({ label, value, tip }: { label: string; value: number; tip: string }) {
   return (
-    <div className="meter">
-      <span className="meter-label">
-        <Tip tip={tip}>{label}</Tip>
+    <Tip tip={tip}>
+      <span className="meter">
+        <span className="meter-label">{label}</span>
+        <span className="meter-track">
+          <span className="meter-fill" style={{ width: `${(value / 4) * 100}%` }} />
+        </span>
+        <span className="meter-value">{value.toFixed(1)}</span>
       </span>
-      <span className="meter-track">
-        <span className="meter-fill" style={{ width: `${(value / 4) * 100}%` }} />
-      </span>
-      <span className="meter-value">{value.toFixed(1)}</span>
-    </div>
+    </Tip>
   );
 }
 
-export default function JobCard({ job, status, onStatus }: Props) {
+export default function JobCard({ job, payPeriod, status, onStatus }: Props) {
+  const approx = approxPay(job, payPeriod);
   const posted = formatPosted(job.posted);
   const meta = [job.type, job.hours && `${job.hours} hrs/wk`].filter(Boolean);
 
@@ -66,9 +72,9 @@ export default function JobCard({ job, status, onStatus }: Props) {
           </a>
           <div className="meta">
             <span className="pay">{job.pay || "Pay not listed"}</span>
-            {approxPay(job) && (
+            {approx && (
               <Tip tip={TIPS.pay}>
-                <span className="pay-approx">{approxPay(job)}</span>
+                <span className="pay-approx">{approx}</span>
               </Tip>
             )}
             {meta.map((m) => (

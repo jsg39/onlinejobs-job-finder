@@ -16,5 +16,5 @@ export const TIPS = {
   match: "Average of fit and appeal (0–4).",
   fit: "Would they hire you? Your resume vs. their requirements.",
   appeal: "Would you want it? Role, pay and remote vs. your preferences.",
-  pay: "Approx. USD per month, for comparing.",
+  pay: "Approx. USD, converted from the posted pay.",
 };

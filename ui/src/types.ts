@@ -6,6 +6,7 @@ export interface Job {
   url: string;
   pay: string | null;
   pay_usd_month: { min: number; max: number } | null; // approximate, for filtering
+  pay_usd_hour?: { min: number; max: number } | null; // at the posting's hours; absent in older runs
   type: string | null;
   hours: string | null;
   posted: string | null; // ISO with offset, e.g. 2026-10-13T04:49:34+08:00
