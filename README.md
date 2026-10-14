@@ -27,6 +27,19 @@ A web app on top of the same scraper. Pick a keyword (default `python`), optiona
 - **Learns from your choices.** *Mark applied* and *Not interested* are saved on the backend (`data/marks.json`). The profile then gets a "Learned from the candidate's choices" section: recent jobs you applied to and dismissed, skills common to the jobs you applied to, and their typical pay. Appeal scoring leans toward what you actually apply to. It can be switched off or cleared on the Profile page.
 - **Your own filters.** Minimum match, minimum pay (per hour, month or year, converted from whatever the posting uses: $/hr, euros, pesos), job type and likely-scam hiding, all remembered in the browser.
 
+### Why Jev, not an LLM, for scoring?
+
+The `--no-jev` baseline has an LLM do Jev's job, scoring fit, appeal and scam risk for every posting. On the same 30 real Python postings (Oct 14, 2026):
+
+| Scoring step | LLM | Jev |
+|---|---|---|
+| Time | 1,020 s for 30 postings, ~34 s each | 5.8 s for 30 cards + 26 postings, ~0.2 s each |
+| Output | Free text that must be parsed as JSON and range-checked | Typed probabilities; can't come back malformed |
+| Cost | Grows with every posting scanned | $0.042 per million input tokens, output free; well under a cent per search |
+| Shortlist | 7 jobs | 4 jobs, all among the LLM's 7 |
+
+Caveats: the LLM was a free model (`nvidia/nemotron-3-ultra-550b-a55b:free`), and in the baseline it wrote a brief in the same call, so a fast paid model would narrow the time gap. Jev is also stricter: the jobs only the LLM shortlisted sat just under Jev's 2.5 bar, and they're one filter change away in the UI. The LLM still writes the briefs, which is what it's good at; Jev makes the yes/no and 0–4 decisions.
+
 ### Run it
 
 The backend is FastAPI, and the frontend is React (Vite) in `ui/`. Run them in two terminals:
