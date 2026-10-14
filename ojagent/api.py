@@ -72,13 +72,13 @@ class MarkRequest(BaseModel):
 
 class RunRequest(BaseModel):
     keyword: str = Field(default="python", min_length=1, max_length=60)
-    pages: int = Field(default=1, ge=1, le=3)
+    postings: int = Field(default=30, ge=5, le=90)  # newest postings to scan
 
 
 @dataclass
 class Run:
     keyword: str
-    pages: int
+    postings: int
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     status: str = "running"  # running | done | error
     stage: str = "search"
@@ -93,7 +93,7 @@ class Run:
         return {
             "id": self.id,
             "keyword": self.keyword,
-            "pages": self.pages,
+            "postings": self.postings,
             "status": self.status,
             "stage": self.stage,
             "stage_label": STAGE_LABELS.get(self.stage, self.stage),
@@ -148,7 +148,7 @@ def create_app(
             if jev is None and llm is None:
                 raise RuntimeError("Set TYPESAFE_API_KEY (and optionally an LLM key) in .env")
             profile = store.composed()
-            result = triage(make_source(), jev, profile, llm=llm, pages=run.pages,
+            result = triage(make_source(), jev, profile, llm=llm, limit=run.postings,
                             keyword=run.keyword, progress=progress)
             data = to_json(result, profile)
             data["keyword"] = run.keyword
@@ -229,7 +229,7 @@ def create_app(
         with lock:
             if any(r.status == "running" for r in runs.values()):
                 raise HTTPException(409, "A search is already running.")
-            run = Run(keyword=req.keyword.strip(), pages=req.pages)
+            run = Run(keyword=req.keyword.strip(), postings=req.postings)
             runs[run.id] = run
         threading.Thread(target=execute, args=(run,), daemon=True).start()
         return run.view()

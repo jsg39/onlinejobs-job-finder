@@ -165,3 +165,22 @@ def test_posted_time_is_marked_as_philippine_time(source):
 
     assert posted_iso("2026-10-13 04:49:34") == "2026-10-13T04:49:34+08:00"
     assert posted_iso(None) is None and posted_iso("yesterday") == "yesterday"
+
+
+def test_limit_reads_just_enough_pages_and_trims():
+    from ojagent.models import JobSummary
+
+    class Paged:
+        def __init__(self):
+            self.pages = []
+
+        def search(self, keyword=None, page=0):
+            self.pages.append(page)
+            return [JobSummary(job_id=f"{page}-{i}", title="t", url="u") for i in range(30)] if page < 5 else []
+
+        def get_job(self, job_id):
+            raise ValueError("closed")
+
+    src = Paged()
+    result = triage(src, FakeJev({f"{p}-{i}": 0.0 for p in range(5) for i in range(30)}, {}), PROFILE, limit=45)
+    assert src.pages == [0, 1] and len(result.cards) == 45

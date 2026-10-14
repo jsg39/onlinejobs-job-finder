@@ -88,7 +88,8 @@ def test_one_run_at_a_time(client, monkeypatch):
 
 def test_keyword_is_validated(client):
     assert client.post("/api/runs", json={"keyword": ""}).status_code == 422
-    assert client.post("/api/runs", json={"pages": 9}).status_code == 422
+    assert client.post("/api/runs", json={"postings": 200}).status_code == 422
+    assert client.post("/api/runs", json={"postings": 2}).status_code == 422
 
 
 def test_latest_is_404_before_any_run(client):

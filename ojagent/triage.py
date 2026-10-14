@@ -29,6 +29,8 @@ from .pay import usd_per_hour, usd_per_month
 from .prefilter import JevPrefilter
 from .scraper import CRAWL_DELAY_SECONDS, JobSource, OnlineJobsClient
 
+SEARCH_PAGE_SIZE = 30  # cards per onlinejobs.ph results page
+
 FIT_LEVELS = [
     "Wrong field for the candidate, or conflicts with their stated preferences",
     "Related field, but the candidate lacks major requirements such as seniority or the core stack",
@@ -222,6 +224,7 @@ def triage(
     profile: str,
     llm: LLM | None = None,
     pages: int = 1,
+    limit: int | None = None,
     keyword: str | None = "python",
     card_threshold: float = 0.2,
     min_rank: float = 2.5,
@@ -240,12 +243,19 @@ def triage(
     t = time.perf_counter()
     cards: list[JobSummary] = []
     seen: set[str] = set()
+    if limit:  # enough 30-card pages to reach `limit` postings
+        pages = -(-limit // SEARCH_PAGE_SIZE)
     for page in range(pages):
         report("search", page, pages)
-        for c in source.search(keyword, page):
+        found = source.search(keyword, page)
+        for c in found:
             if c.job_id not in seen:
                 seen.add(c.job_id)
                 cards.append(c)
+        if not found or (limit and len(cards) >= limit):
+            break
+    if limit:
+        cards = cards[:limit]
     timings["search"] = time.perf_counter() - t
 
     hidden: dict[str, float] = {}
@@ -438,6 +448,7 @@ def to_json(result: TriageResult, profile: str) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ojagent.triage", description=__doc__.split("\n\n")[0])
     parser.add_argument("--pages", type=int, default=1, help="Search pages to scan, 30 postings each.")
+    parser.add_argument("--limit", type=int, help="Scan this many newest postings (overrides --pages).")
     parser.add_argument("--keyword", default="python", help="Search keyword (default: python).")
     parser.add_argument("--threshold", type=float, default=0.2, help="Stage-1 fit probability cutoff.")
     parser.add_argument("--min-rank", type=float, default=2.5,
@@ -465,7 +476,7 @@ def main(argv: list[str] | None = None) -> int:
           f"{'' if args.no_llm else f' · LLM {model}'}; each posting fetch waits "
           f"{CRAWL_DELAY_SECONDS:.0f} s (robots.txt)...")
     result = triage(
-        OnlineJobsClient(), jev, profile, llm=llm, pages=args.pages, keyword=args.keyword,
+        OnlineJobsClient(), jev, profile, llm=llm, pages=args.pages, limit=args.limit, keyword=args.keyword,
         card_threshold=args.threshold, min_rank=args.min_rank,
     )
     report = render(result, profile)
