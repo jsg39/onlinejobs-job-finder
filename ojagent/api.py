@@ -18,7 +18,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from .config import ROOT, load_settings
 from .llm import LLM, OpenAICompatibleLLM
 from .prefilter import JevPrefilter
+from .profile_store import JobSnapshot, Mark, Profile, ProfileStore, learned_summary, seed_from_markdown
 from .scraper import JobSource, OnlineJobsClient
 from .triage import render, to_json, triage
 
@@ -64,16 +65,9 @@ def extract_resume_text(filename: str, data: bytes) -> str:
     return text
 
 
-def preferences_section(profile: str) -> str:
-    match = re.search(r"^## Preferences\n.*?(?=^## |\Z)", profile, re.M | re.S)
-    return match.group(0).strip() if match else ""
-
-
-def build_profile(base_profile: str, resume: str | None) -> str:
-    """The uploaded resume plus the preferences (pay floor, remote) a resume doesn't state."""
-    if not resume:
-        return base_profile
-    return f"# Candidate profile\n\n{preferences_section(base_profile)}\n\n## Resume\n{resume}\n"
+class MarkRequest(BaseModel):
+    status: Literal["applied", "dismissed"] | None  # None clears the mark
+    job: JobSnapshot | None = None
 
 
 class RunRequest(BaseModel):
@@ -133,12 +127,17 @@ def create_app(
     out_dir: Path = ROOT / "out",
 ) -> FastAPI:
     app = FastAPI(title="ojagent", description="Job triage for onlinejobs.ph")
-    resume_txt, resume_meta = data_dir / "resume.txt", data_dir / "resume.json"
+    store = ProfileStore(data_dir, profile_path)
     runs: dict[str, Run] = {}
     lock = threading.Lock()
 
-    def current_resume() -> str | None:
-        return resume_txt.read_text(encoding="utf-8") if resume_txt.exists() else None
+    def profile_view() -> dict:
+        profile, marks = store.load(), store.marks()
+        return {
+            "profile": profile.model_dump(),
+            "learned": learned_summary(marks),
+            "composed": store.composed(),
+        }
 
     def execute(run: Run) -> None:
         def progress(stage: str, done: int, total: int) -> None:
@@ -148,7 +147,7 @@ def create_app(
             jev, llm = make_jev(), make_llm()
             if jev is None and llm is None:
                 raise RuntimeError("Set TYPESAFE_API_KEY (and optionally an LLM key) in .env")
-            profile = build_profile(profile_path.read_text(encoding="utf-8"), current_resume())
+            profile = store.composed()
             result = triage(make_source(), jev, profile, llm=llm, pages=run.pages,
                             keyword=run.keyword, progress=progress)
             data = to_json(result, profile)
@@ -165,11 +164,18 @@ def create_app(
         finally:
             run.finished = time.time()
 
+    @app.get("/api/profile")
+    def get_profile() -> dict:
+        return profile_view()
+
+    @app.put("/api/profile")
+    def put_profile(profile: Profile) -> dict:
+        store.save(profile)
+        return profile_view()
+
     @app.get("/api/resume")
     def get_resume() -> dict:
-        if not resume_meta.exists():
-            return {"resume": None}
-        return {"resume": json.loads(resume_meta.read_text(encoding="utf-8"))}
+        return {"resume": store.load().resume_meta}
 
     @app.post("/api/resume")
     async def upload_resume(file: UploadFile = File(...)) -> dict:
@@ -180,21 +186,43 @@ def create_app(
             text = extract_resume_text(file.filename or "", data)
         except ValueError as e:
             raise HTTPException(422, str(e))
-        data_dir.mkdir(parents=True, exist_ok=True)
-        resume_txt.write_text(text, encoding="utf-8")
         meta = {
             "filename": Path(file.filename or "resume").name,
             "uploaded_at": datetime.now().isoformat(timespec="seconds"),
             "chars": len(text),
         }
-        resume_meta.write_text(json.dumps(meta), encoding="utf-8")
-        return {"resume": meta}
+        profile = store.load()
+        profile.resume_text, profile.resume_meta = text[:30_000], meta
+        store.save(profile)
+        return {"resume": meta, **profile_view()}
 
     @app.delete("/api/resume")
     def delete_resume() -> dict:
-        resume_txt.unlink(missing_ok=True)
-        resume_meta.unlink(missing_ok=True)
-        return {"resume": None}
+        """Go back to the resume text in profile.md."""
+        profile = store.load()
+        md = profile_path.read_text(encoding="utf-8") if profile_path.exists() else ""
+        profile.resume_text, profile.resume_meta = seed_from_markdown(md).resume_text, None
+        store.save(profile)
+        return {"resume": None, **profile_view()}
+
+    @app.get("/api/marks")
+    def get_marks() -> dict:
+        return {"marks": {k: m.status for k, m in store.marks().items()}}
+
+    @app.put("/api/marks/{job_id}")
+    def put_mark(job_id: str, req: MarkRequest) -> dict:
+        if req.status is None:
+            marks = store.set_mark(job_id, None)
+        else:
+            if req.job is None:
+                raise HTTPException(422, "Send the job with an applied or dismissed mark.")
+            marks = store.set_mark(job_id, Mark(status=req.status, job=req.job))
+        return {"marks": {k: m.status for k, m in marks.items()}}
+
+    @app.delete("/api/marks")
+    def clear_marks() -> dict:
+        store.clear_marks()
+        return {"marks": {}}
 
     @app.post("/api/runs", status_code=202)
     def start_run(req: RunRequest) -> dict:
