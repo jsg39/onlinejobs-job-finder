@@ -3,6 +3,7 @@ import { getActiveRun, getLatest, getRun, startRun } from "./api";
 import FilterBar from "./FilterBar";
 import { passes, useFilters } from "./filters";
 import JobCard from "./JobCard";
+import ProfilePage from "./ProfilePage";
 import SearchPanel from "./SearchPanel";
 import type { Job, Run, RunStatus } from "./types";
 import { useStatuses } from "./useStatuses";
@@ -16,13 +17,27 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 const POLL_MS = 1500;
 
+type Page = "jobs" | "profile";
+const pageFromHash = (): Page => (location.hash === "#/profile" ? "profile" : "jobs");
+
+function usePage(): Page {
+  const [page, setPage] = useState<Page>(pageFromHash);
+  useEffect(() => {
+    const onHash = () => setPage(pageFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  return page;
+}
+
 export default function App() {
   const [run, setRun] = useState<Run | null>(null);
   const [active, setActive] = useState<RunStatus | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [backendDown, setBackendDown] = useState(false);
   const [tab, setTab] = useState<Tab>("foryou");
-  const { statuses, setStatus } = useStatuses();
+  const { statuses, setStatus, error: markError } = useStatuses();
+  const page = usePage();
   const [filters, setFilters] = useFilters();
 
   useEffect(() => {
@@ -82,8 +97,33 @@ export default function App() {
 
   const jobs = groups[tab];
 
+  const nav = (
+    <nav className="pages" aria-label="Pages">
+      <a href="#/" aria-current={page === "jobs" ? "page" : undefined}>
+        Jobs
+      </a>
+      <a href="#/profile" aria-current={page === "profile" ? "page" : undefined}>
+        Profile
+      </a>
+    </nav>
+  );
+
+  if (page === "profile") {
+    return (
+      <main className="page">
+        {nav}
+        <header className="top">
+          <h1>Your profile</h1>
+          <p className="muted">What every job is scored against. Changes apply to your next search.</p>
+        </header>
+        <ProfilePage />
+      </main>
+    );
+  }
+
   return (
     <main className="page">
+      {nav}
       <header className="top">
         <h1>Jobs worth your time</h1>
         <p className="muted">
@@ -104,6 +144,7 @@ export default function App() {
       )}
 
       <SearchPanel active={active} onStart={onStart} startError={startError} />
+      {markError && <p className="error">Couldn't save that mark: {markError}</p>}
 
       {run && (
         <>
@@ -147,7 +188,7 @@ export default function App() {
                   job={job}
                   payPeriod={filters.payPeriod}
                   status={statuses[job.id]}
-                  onStatus={(s) => setStatus(job.id, s)}
+                  onStatus={(s) => setStatus(job, s)}
                 />
               ))
             )}

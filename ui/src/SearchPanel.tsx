@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { deleteResume, getResume, uploadResume } from "./api";
+import { useEffect, useState } from "react";
+import { getResume } from "./api";
 import type { ResumeInfo, RunStatus } from "./types";
 
 const KEYWORD_KEY = "ojagent:keyword";
@@ -23,33 +23,11 @@ export default function SearchPanel({ active, onStart, startError }: Props) {
   const [keyword, setKeyword] = useState(savedKeyword);
   const [pages, setPages] = useState(1);
   const [resume, setResume] = useState<ResumeInfo | null>(null);
-  const [resumeError, setResumeError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
   const running = active?.status === "running";
 
   useEffect(() => {
     getResume().then((r) => setResume(r.resume)).catch(() => {});
   }, []);
-
-  async function onFile(file: File | undefined) {
-    if (!file) return;
-    setUploading(true);
-    setResumeError(null);
-    try {
-      setResume((await uploadResume(file)).resume);
-    } catch (e) {
-      setResumeError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setUploading(false);
-      if (fileInput.current) fileInput.current.value = "";
-    }
-  }
-
-  async function onRemove() {
-    await deleteResume().catch(() => {});
-    setResume(null);
-  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,36 +67,14 @@ export default function SearchPanel({ active, onStart, startError }: Props) {
         </button>
       </form>
 
-      <div className="resume">
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".pdf,.docx,.txt,.md"
-          hidden
-          onChange={(e) => onFile(e.target.files?.[0])}
-        />
-        {resume ? (
-          <>
-            <span className="resume-name">
-              Matching against <strong>{resume.filename}</strong>
-            </span>
-            <button className="link" onClick={() => fileInput.current?.click()} disabled={uploading || running}>
-              Replace
-            </button>
-            <button className="link" onClick={onRemove} disabled={uploading || running}>
-              Remove
-            </button>
-          </>
-        ) : (
-          <>
-            <span className="muted">Matching against your saved profile.</span>
-            <button className="link" onClick={() => fileInput.current?.click()} disabled={uploading || running}>
-              {uploading ? "Uploading…" : "Upload resume (PDF, DOCX)"}
-            </button>
-          </>
-        )}
-      </div>
-      {resumeError && <p className="error">{resumeError}</p>}
+      <p className="resume">
+        <span className="muted">
+          Matching against {resume ? <strong>{resume.filename}</strong> : "your profile"}.
+        </span>
+        <a className="link" href="#/profile">
+          Edit profile →
+        </a>
+      </p>
       {startError && <p className="error">{startError}</p>}
 
       {running && active && <Progress run={active} />}

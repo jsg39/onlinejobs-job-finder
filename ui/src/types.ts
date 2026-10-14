@@ -74,3 +74,34 @@ export interface RunStatus {
   error: string | null;
   result: Run | null;
 }
+
+export interface Preferences {
+  roles: string;
+  remote_only: boolean;
+  min_pay_amount: number;
+  min_pay_currency: "USD" | "PHP";
+  min_pay_period: "hour" | "month" | "year";
+  not_interested: string;
+  notes: string;
+}
+
+export interface Profile {
+  preferences: Preferences;
+  resume_text: string;
+  resume_meta: ResumeInfo | null;
+  use_learned: boolean;
+}
+
+export interface Learned {
+  applied: string[];
+  dismissed: string[];
+  top_skills: string[];
+  types: string[];
+  median_pay_usd_month: number | null;
+}
+
+export interface ProfileView {
+  profile: Profile;
+  learned: Learned;
+  composed: string; // the exact text Jev and the LLM rank against
+}
