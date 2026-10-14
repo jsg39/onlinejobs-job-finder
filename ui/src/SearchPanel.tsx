@@ -4,6 +4,8 @@ import type { ResumeInfo, RunStatus } from "./types";
 
 const KEYWORD_KEY = "ojagent:keyword";
 const CRAWL_DELAY_S = 5;
+const MIN_POSTINGS = 5;
+const MAX_POSTINGS = 90; // the API caps a scan at three 30-card result pages
 
 function savedKeyword(): string {
   try {
@@ -15,13 +17,13 @@ function savedKeyword(): string {
 
 interface Props {
   active: RunStatus | null;
-  onStart: (keyword: string, pages: number) => void;
+  onStart: (keyword: string, postings: number) => void;
   startError: string | null;
 }
 
 export default function SearchPanel({ active, onStart, startError }: Props) {
   const [keyword, setKeyword] = useState(savedKeyword);
-  const [pages, setPages] = useState(1);
+  const [postings, setPostings] = useState<number | "">(30);
   const [resume, setResume] = useState<ResumeInfo | null>(null);
   const running = active?.status === "running";
 
@@ -33,12 +35,14 @@ export default function SearchPanel({ active, onStart, startError }: Props) {
     e.preventDefault();
     const k = keyword.trim();
     if (!k) return;
+    const n = Math.min(MAX_POSTINGS, Math.max(MIN_POSTINGS, Number(postings) || 30));
+    setPostings(n);
     try {
       localStorage.setItem(KEYWORD_KEY, k);
     } catch {
       // fine: keyword just isn't remembered
     }
-    onStart(k, pages);
+    onStart(k, n);
   }
 
   return (
@@ -54,13 +58,22 @@ export default function SearchPanel({ active, onStart, startError }: Props) {
             disabled={running}
           />
         </label>
-        <label className="field">
-          <span>Scan</span>
-          <select value={pages} onChange={(e) => setPages(Number(e.target.value))} disabled={running}>
-            <option value={1}>30 newest</option>
-            <option value={2}>60 newest</option>
-            <option value={3}>90 newest</option>
-          </select>
+        <label className="field scan">
+          <span>Postings to scan</span>
+          <span className="money">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={MIN_POSTINGS}
+              max={MAX_POSTINGS}
+              step={5}
+              value={postings}
+              onChange={(e) => setPostings(e.target.value === "" ? "" : Number(e.target.value))}
+              disabled={running}
+              aria-label={`Number of newest postings to scan, ${MIN_POSTINGS} to ${MAX_POSTINGS}`}
+            />
+            <span aria-hidden>newest</span>
+          </span>
         </label>
         <button className="btn primary find" type="submit" disabled={running || !keyword.trim()}>
           {running ? "Searching…" : "Find my top jobs"}

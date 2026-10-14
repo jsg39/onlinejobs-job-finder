@@ -511,3 +511,7 @@ a.link { text-decoration: none; }
   .title-lists { grid-template-columns: 1fr; }
   .section-head { flex-direction: column; }
 }
+
+.field.scan { width: 150px; }
+.field.scan .money { height: 40px; }
+.field.scan .money input { font-size: 15px; }

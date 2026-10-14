@@ -65,10 +65,10 @@ export default function App() {
     return () => clearInterval(timer);
   }, [active?.id, active?.status]);
 
-  const onStart = useCallback(async (keyword: string, pages: number) => {
+  const onStart = useCallback(async (keyword: string, postings: number) => {
     setStartError(null);
     try {
-      setActive(await startRun(keyword, pages));
+      setActive(await startRun(keyword, postings));
       setBackendDown(false);
     } catch (e) {
       setStartError(e instanceof Error ? e.message : String(e));

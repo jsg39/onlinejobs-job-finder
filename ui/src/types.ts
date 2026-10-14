@@ -64,7 +64,7 @@ export interface ResumeInfo {
 export interface RunStatus {
   id: string;
   keyword: string;
-  pages: number;
+  postings: number;
   status: "running" | "done" | "error";
   stage: string;
   stage_label: string;

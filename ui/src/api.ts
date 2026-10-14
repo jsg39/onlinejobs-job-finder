@@ -22,11 +22,11 @@ export function uploadResume(file: File) {
   return call<{ resume: ResumeInfo } & ProfileView>("/api/resume", { method: "POST", body: form });
 }
 
-export const startRun = (keyword: string, pages: number) =>
+export const startRun = (keyword: string, postings: number) =>
   call<RunStatus>("/api/runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ keyword, pages }),
+    body: JSON.stringify({ keyword, postings }),
   });
 
 export const getRun = (id: string) => call<RunStatus>(`/api/runs/${id}`);
