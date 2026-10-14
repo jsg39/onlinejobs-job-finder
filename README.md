@@ -23,7 +23,9 @@ A web app on top of the same scraper. Pick a keyword (default `python`), optiona
 - **Jev screens first.** One Jev call scores every search card, and clear mismatches are never fetched. Each skipped fetch saves the 5 s robots.txt crawl delay.
 - **Two scores, one rank.** Jev scores each fetched posting on *fit* (would they hire you?) and *appeal* (would you want it, given the pay floor and fully-remote preference in `profile.md`), plus a scam signal. Rank is the mean of fit and appeal.
 - **The LLM only sees the shortlist.** It writes a 2–3 sentence summary for shortlisted jobs, so LLM tokens grow with the shortlist, not with the number of postings scanned. `--no-jev` is the baseline where the LLM has to score and summarize every posting.
-- **Resume upload.** A PDF, DOCX or text resume replaces the experience part of the profile. The preferences section of `profile.md` is kept, because resumes don't state pay or remote preferences. The resume is saved to `data/resume.txt` and reused until you remove it.
+- **Profile page.** Upload a PDF or DOCX resume and edit the extracted text, plus what you want: roles, minimum pay (amount, currency, per hour/month/year), fully remote only, and what you're not interested in. Fit is scored against the resume; appeal against these preferences. "What Jev sees" shows the exact profile text being ranked against. It starts from `profile.md` and is saved to `data/profile.json`.
+- **Learns from your choices.** *Mark applied* and *Not interested* are saved on the backend (`data/marks.json`). The profile then gets a "Learned from the candidate's choices" section: recent jobs you applied to and dismissed, skills common to the jobs you applied to, and their typical pay. Appeal scoring leans toward what you actually apply to. It can be switched off or cleared on the Profile page.
+- **Your own filters.** Minimum match, minimum pay (per hour, month or year, converted from whatever the posting uses: $/hr, euros, pesos), job type and likely-scam hiding, all remembered in the browser.
 
 ### Run it
 
@@ -50,7 +52,9 @@ A search takes a few minutes, because every posting that passes the Jev screen i
 | `POST /api/runs` | Start a search: `{"keyword": "python", "pages": 1}` (1–3 pages of 30). Returns 409 if one is already running. |
 | `GET /api/runs/{id}` · `GET /api/runs/active` | Progress (stage, done/total, elapsed), and the results when done. |
 | `GET /api/latest` | The most recent results (also saved as `out/latest.json`). |
-| `GET` · `POST` · `DELETE /api/resume` | Show, upload (PDF/DOCX/TXT/MD, under 5 MB) or remove the resume used for matching. |
+| `GET` · `PUT /api/profile` | The editable profile, what's been learned from your marks, and the composed text Jev ranks against. |
+| `GET` · `POST` · `DELETE /api/resume` | Show, upload (PDF/DOCX/TXT/MD, under 5 MB) or remove the uploaded resume (back to `profile.md`'s text). |
+| `GET /api/marks` · `PUT /api/marks/{id}` · `DELETE /api/marks` | Applied / not-interested marks, with a snapshot of each job to learn from. |
 
 Without the UI, the same pipeline runs from the command line and writes a Markdown report to `out/`:
 
@@ -87,7 +91,9 @@ python -m ojagent.triage --keyword fastapi --pages 2
 | `report.py` | Builds the Markdown report from what the tools actually saved, so the model can't report work it didn't do. |
 | `prefilter.py` | Optional [Jev](https://docs.typesafe.ai) prefilter: one call scores every search result's fit before the agent sees it (see below). |
 | `triage.py` | The triage pipeline behind the app: screen, fetch, score, rank, summarize, with timings and LLM token counts. Also a CLI. |
-| `api.py` | FastAPI backend for the app: background runs with progress, resume upload and text extraction. |
+| `api.py` | FastAPI backend for the app: background runs with progress, resume upload and text extraction, profile and marks. |
+| `profile_store.py` | The app's editable profile, seeded from `profile.md`, plus learning from applied / not-interested marks. |
+| `pay.py` | Normalizes free-text pay to approximate USD per month and per hour. |
 | `ui/` | React + TypeScript frontend (Vite), dark mode. Applied / not-interested marks are kept in the browser. |
 
 ### Jev prefilter
@@ -148,11 +154,12 @@ Each run writes `out/<run_id>.md` (assessments, employer checklist, subject and 
 
 ## Tests
 
-57 offline tests (`pytest`, no network) cover:
+90 offline tests (`pytest`, no network) cover:
 - HTML parsing against saved real pages, and the crawl delay
 - every validator rule
 - the agent loop with a scripted LLM: retry after rejection, bad arguments, unknown tools, step budget, text-only replies, cross-run memory, cache hits
 - the eval scorer
 - the Jev prefilter against a mocked API: request shape, rate-limit retry, hiding mismatches, skipping already-assessed jobs, failing open
 - the triage pipeline: fetching only what Jev keeps, the no-Jev baseline, fit + appeal ranking, LLM summaries for the shortlist only, JSON export
-- the API: runs and progress, one run at a time, resume upload (PDF/DOCX/text) keeping profile preferences, input validation
+- the API: runs and progress, one run at a time, resume upload (PDF/DOCX/text), profile editing, marks and learning, input validation
+- pay parsing across real posting formats, and profile seeding and composition
