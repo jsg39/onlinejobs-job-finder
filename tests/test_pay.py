@@ -2,7 +2,7 @@
 
 import pytest
 
-from ojagent.pay import usd_per_month
+from ojagent.pay import usd_per_hour, usd_per_month
 
 H = 52 / 12  # weeks per month
 
@@ -34,3 +34,10 @@ def test_known_formats(text, hours, expected):
 ])
 def test_unknown_or_per_project_pay(text):
     assert usd_per_month(text) is None
+
+
+def test_hourly_rate_uses_the_posting_hours():
+    monthly = usd_per_month("$20/hr", "20")  # part-time: about $1,733/month
+    assert usd_per_hour(monthly, "20") == {"min": 20.0, "max": 20.0}
+    assert usd_per_hour(usd_per_month("$1,000/month"), None)["max"] == round(1000 / (40 * H), 2)
+    assert usd_per_hour(None) is None

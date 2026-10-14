@@ -72,3 +72,11 @@ def usd_per_month(pay: str | None, hours: str | None = None) -> dict | None:
     low, high = min(amounts), max(amounts)
     rate = USD_PER[currency] * per_month
     return {"min": round(low * rate), "max": round(high * rate)}
+
+
+def usd_per_hour(monthly: dict | None, hours: str | None = None) -> dict | None:
+    """The monthly range as an hourly rate at the posting's hours (default 40/week)."""
+    if not monthly:
+        return None
+    per_hour = 1 / (_hours_per_week(hours) * WEEKS_PER_MONTH)
+    return {k: round(v * per_hour, 2) for k, v in monthly.items()}

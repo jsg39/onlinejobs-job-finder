@@ -25,7 +25,7 @@ from datetime import datetime
 from .config import ROOT, load_settings
 from .llm import LLM, OpenAICompatibleLLM
 from .models import JobPosting, JobSummary
-from .pay import usd_per_month
+from .pay import usd_per_hour, usd_per_month
 from .prefilter import JevPrefilter
 from .scraper import CRAWL_DELAY_SECONDS, JobSource, OnlineJobsClient
 
@@ -411,7 +411,8 @@ def to_json(result: TriageResult, profile: str) -> dict:
                 "title": s.posting.title,
                 "url": s.posting.url,
                 "pay": s.posting.salary or s.card.salary,
-                "pay_usd_month": usd_per_month(s.posting.salary or s.card.salary, s.posting.hours_per_week),
+                "pay_usd_month": (monthly := usd_per_month(s.posting.salary or s.card.salary, s.posting.hours_per_week)),
+                "pay_usd_hour": usd_per_hour(monthly, s.posting.hours_per_week),
                 "type": s.posting.job_type or s.card.job_type,
                 "hours": s.posting.hours_per_week,
                 "posted": posted_iso(s.card.posted_at) or s.posting.date_updated,
