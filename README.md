@@ -1,8 +1,89 @@
-# onlinejobs.ph Application Agent
+# onlinejobs.ph Job Finder
 
-A tool-calling LLM agent that scrapes the newest [onlinejobs.ph](https://www.onlinejobs.ph) postings, decides which ones fit my profile, assesses each one with **evidence that is checked word for word**, and drafts an application subject and message for the good fits.
+Two tools for finding remote work on [onlinejobs.ph](https://www.onlinejobs.ph), sharing one polite scraper and one candidate profile:
 
-It drafts and never sends. I review every application before it goes out.
+1. **Job finder app** (FastAPI + React). Search, get a shortlist ranked against your resume and preferences, filter it, and mark what you apply to. The ranking learns from your marks. Uses [Jev](https://docs.typesafe.ai) for fast, cheap scoring and an LLM only for short briefs.
+2. **Application agent** (CLI). A tool-calling LLM agent that assesses postings with evidence checked word for word against your profile and drafts applications. It drafts and never sends.
+
+## Job finder app
+
+![How the job finder works](docs/triage-pipeline.png)
+
+### How it works
+
+1. **Search.** Scrape the newest postings for your keyword (default `python`), as many as you choose (5–90). The scraper waits 5 s between requests, as the site's robots.txt asks.
+2. **Jev screens.** One Jev call asks "is this a realistic fit?" for every search card at once. Clear mismatches (under 20%) are dropped and never fetched.
+3. **Read.** Only the likely fits are fetched in full. At 5 s each, this is the slowest step, which is why step 2 matters.
+4. **Jev scores** each job against your profile: **fit** 0–4 (would they hire you?), **appeal** 0–4 (would you want it?) and a scam signal. **Match** is the average of fit and appeal.
+5. **The LLM writes a brief** for jobs matching 2.0 or higher: one line on the role, up to two ✓ reasons you fit, up to two △ gaps. The LLM's cost depends on how many jobs make the shortlist, not on how many are scanned.
+6. **Your shortlist**, best match first, with pay, hours, posted time (local), the brief and a link to the posting.
+
+### Your profile
+
+The **Profile** page holds what every job is scored against:
+
+- **Resume** (drives fit). Upload a PDF or DOCX, then edit the extracted text.
+- **What you want** (drives appeal): roles, minimum pay (₱ or $, per hour/month/year), fully remote only, and what you're not interested in.
+- **Learned from your choices** (drives appeal). *Mark applied* and *Not interested* are saved on the backend. The profile gains your recent applied and dismissed jobs, the skills common to jobs you applied to, and their typical pay, so ranking leans toward what you actually apply to. It can be switched off or cleared.
+- **What Jev sees** shows the exact profile text being ranked against.
+
+The profile starts from `profile.md` and is saved to `data/profile.json`; marks go to `data/marks.json`.
+
+### Filters
+
+On the Jobs page: minimum match, minimum pay (per hour, month or year), job type and hiding likely scams. Posted pay comes in many forms ("$20/hr", "6-8 Euros per hour", "₱60k/mo", "Negotiable"), so `pay.py` converts it to approximate USD per month and per hour. Hourly rates use each posting's own hours, so part-time jobs are compared fairly. Filters are remembered in the browser.
+
+### Why Jev, not an LLM, for scoring?
+
+`--no-jev` is a baseline where the LLM does Jev's job, scoring and summarizing every posting. On the same 30 real Python postings (Oct 14, 2026):
+
+| | Without Jev | With Jev |
+|---|---|---|
+| Time per search | 1,183 s (20 min) | 213 s (3.5 min), 5.6× faster |
+| LLM tokens | 102,941 | 11,947, 88% fewer |
+| LLM calls | 30 | 4 |
+| Scoring one job | ~34 s (LLM) | ~0.2 s (Jev), ≈150× faster |
+| Shortlist | 7 jobs | 4 jobs, all among the LLM's 7 |
+
+Jev's output is typed probabilities, so it can't come back malformed. The LLM's has to be parsed as JSON and range-checked. Jev costs $0.042 per million input tokens and output is free, which comes to well under a cent per search.
+
+Caveats: this is a single run, and the LLM was a free model (`nvidia/nemotron-3-ultra-550b-a55b:free`) that also wrote briefs in the same call, so a fast paid model would narrow the time gap. Jev is stricter: the jobs only the LLM shortlisted sat just under the 2.5 default, one filter change away. Since then, briefs also cover jobs at 2.0–2.5, so a search makes a few more LLM calls than shown.
+
+### Run it
+
+Two terminals. The backend is FastAPI; the frontend is React + TypeScript (Vite) in `ui/`:
+
+```bash
+# Terminal 1: backend on http://127.0.0.1:8000 (API docs at /docs)
+.venv\Scripts\activate
+uvicorn ojagent.api:app --port 8000
+
+# Terminal 2: frontend on http://localhost:5173
+cd ui
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. The dev server forwards `/api` to the backend. A search takes a few minutes because of the crawl delay. The progress bar shows each stage, survives a page reload, and only one search runs at a time.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/runs` | Start a search: `{"keyword": "python", "postings": 30}` (5–90). Returns 409 if one is already running. |
+| `GET /api/runs/{id}` · `GET /api/runs/active` | Progress (stage, done/total, elapsed), and results when done. |
+| `GET /api/latest` | The most recent results, also saved as `out/latest.json`. |
+| `GET` · `PUT /api/profile` | The editable profile, what's been learned from your marks, and the composed text Jev ranks against. |
+| `GET` · `POST` · `DELETE /api/resume` | Show, upload (PDF/DOCX/TXT/MD, under 5 MB) or remove the uploaded resume. |
+| `GET /api/marks` · `PUT /api/marks/{id}` · `DELETE /api/marks` | Applied / not-interested marks, each with a snapshot of the job to learn from. |
+
+The same pipeline also runs without the UI and writes a Markdown report to `out/`:
+
+```bash
+python -m ojagent.triage                       # Jev screens and ranks, the LLM writes briefs
+python -m ojagent.triage --no-jev              # baseline: the LLM scores and summarizes everything
+python -m ojagent.triage --keyword fastapi --limit 45
+```
+
+## Application agent
 
 ```
 $ python -m ojagent --max-jobs 5
@@ -14,70 +95,7 @@ $ python -m ojagent --max-jobs 5
 ...
 ```
 
-## Job triage app
-
-A web app on top of the same scraper. Pick a keyword (default `python`), optionally upload a resume, click **Find my top jobs**, and get a shortlist of postings ranked by how well you fit them and how much you'd want them, with pay, hours, a summary and a link to each posting.
-
-![Triage pipeline](docs/triage-pipeline.png)
-
-- **Jev screens first.** One Jev call scores every search card, and clear mismatches are never fetched. Each skipped fetch saves the 5 s robots.txt crawl delay.
-- **Two scores, one rank.** Jev scores each fetched posting on *fit* (would they hire you?) and *appeal* (would you want it, given the pay floor and fully-remote preference in `profile.md`), plus a scam signal. Rank is the mean of fit and appeal.
-- **The LLM only sees the shortlist.** It writes a 2–3 sentence summary for shortlisted jobs, so LLM tokens grow with the shortlist, not with the number of postings scanned. `--no-jev` is the baseline where the LLM has to score and summarize every posting.
-- **Profile page.** Upload a PDF or DOCX resume and edit the extracted text, plus what you want: roles, minimum pay (amount, currency, per hour/month/year), fully remote only, and what you're not interested in. Fit is scored against the resume; appeal against these preferences. "What Jev sees" shows the exact profile text being ranked against. It starts from `profile.md` and is saved to `data/profile.json`.
-- **Learns from your choices.** *Mark applied* and *Not interested* are saved on the backend (`data/marks.json`). The profile then gets a "Learned from the candidate's choices" section: recent jobs you applied to and dismissed, skills common to the jobs you applied to, and their typical pay. Appeal scoring leans toward what you actually apply to. It can be switched off or cleared on the Profile page.
-- **Your own filters.** Minimum match, minimum pay (per hour, month or year, converted from whatever the posting uses: $/hr, euros, pesos), job type and likely-scam hiding, all remembered in the browser.
-
-### Why Jev, not an LLM, for scoring?
-
-The `--no-jev` baseline has an LLM do Jev's job, scoring fit, appeal and scam risk for every posting. On the same 30 real Python postings (Oct 14, 2026):
-
-| Scoring step | LLM | Jev |
-|---|---|---|
-| Time | 1,020 s for 30 postings, ~34 s each | 5.8 s for 30 cards + 26 postings, ~0.2 s each |
-| Output | Free text that must be parsed as JSON and range-checked | Typed probabilities; can't come back malformed |
-| Cost | Grows with every posting scanned | $0.042 per million input tokens, output free; well under a cent per search |
-| Shortlist | 7 jobs | 4 jobs, all among the LLM's 7 |
-
-Caveats: the LLM was a free model (`nvidia/nemotron-3-ultra-550b-a55b:free`), and in the baseline it wrote a brief in the same call, so a fast paid model would narrow the time gap. Jev is also stricter: the jobs only the LLM shortlisted sat just under Jev's 2.5 bar, and they're one filter change away in the UI. The LLM still writes the briefs, which is what it's good at; Jev makes the yes/no and 0–4 decisions.
-
-### Run it
-
-The backend is FastAPI, and the frontend is React (Vite) in `ui/`. Run them in two terminals:
-
-```bash
-# Terminal 1: backend on http://127.0.0.1:8000 (API docs at /docs)
-.venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn ojagent.api:app --port 8000
-
-# Terminal 2: frontend on http://localhost:5173
-cd ui
-npm install
-npm run dev
-```
-
-Open http://localhost:5173. The dev server forwards `/api` to the backend. `.env` needs `TYPESAFE_API_KEY` for Jev; an LLM key (`LLM_API_KEY`) is optional, and without one, summaries are the posting's opening lines.
-
-A search takes a few minutes, because every posting that passes the Jev screen is fetched at the site's crawl delay. The progress bar shows the current stage, and you can reload the page without losing it. Only one search runs at a time.
-
-| Endpoint | Purpose |
-|---|---|
-| `POST /api/runs` | Start a search: `{"keyword": "python", "postings": 30}` (the 5–90 newest postings). Returns 409 if one is already running. |
-| `GET /api/runs/{id}` · `GET /api/runs/active` | Progress (stage, done/total, elapsed), and the results when done. |
-| `GET /api/latest` | The most recent results (also saved as `out/latest.json`). |
-| `GET` · `PUT /api/profile` | The editable profile, what's been learned from your marks, and the composed text Jev ranks against. |
-| `GET` · `POST` · `DELETE /api/resume` | Show, upload (PDF/DOCX/TXT/MD, under 5 MB) or remove the uploaded resume (back to `profile.md`'s text). |
-| `GET /api/marks` · `PUT /api/marks/{id}` · `DELETE /api/marks` | Applied / not-interested marks, with a snapshot of each job to learn from. |
-
-Without the UI, the same pipeline runs from the command line and writes a Markdown report to `out/`:
-
-```bash
-python -m ojagent.triage                     # Jev screens and ranks, the LLM summarizes the shortlist
-python -m ojagent.triage --no-jev            # baseline: the LLM scores and summarizes everything
-python -m ojagent.triage --keyword fastapi --limit 45
-```
-
-## Architecture
+The LLM decides which postings to read, saves a fit assessment for each, and drafts an application subject and message for the good fits. Each run writes `out/<run_id>.md` (assessments, employer checklist, drafts ready to paste) and `out/traces/<run_id>.jsonl` (every model turn and tool result).
 
 ```
           ┌──────────────── agent loop (agent.py) ────────────────┐
@@ -94,35 +112,14 @@ python -m ojagent.triage --keyword fastapi --limit 45
                                                                          length limits
 ```
 
-| Module | Responsibility |
-|---|---|
-| `scraper.py` | `OnlineJobsClient` parses search and detail pages and honours robots.txt `Crawl-delay: 5`. It sits behind a `JobSource` protocol so evals can swap in synthetic postings. |
-| `tools.py` | Tools with typed Pydantic arguments (JSON schemas generated from the models). Tool failures are returned to the model as `{"ok": false, "errors": [...]}` so it can fix them, instead of crashing the loop. |
-| `verify.py` | Deterministic guards. Every `requirement_quote` must appear in the posting and every `profile_evidence_quote` in the profile. The score must agree with the verdict. A draft must contain any code word the employer asked for and must not name a technology that's missing from the profile, unless it is acknowledged as a gap. |
-| `store.py` | SQLite memory: postings are cached so they're never fetched twice, and assessed jobs are marked `already_assessed` in later runs. |
-| `agent.py` | Provider-agnostic loop over any OpenAI-compatible API (OpenRouter → Claude/GPT, OpenAI, or local vLLM/Ollama), with a step budget, no-tool-call nudges, token accounting, and per-run traces. |
-| `report.py` | Builds the Markdown report from what the tools actually saved, so the model can't report work it didn't do. |
-| `prefilter.py` | Optional [Jev](https://docs.typesafe.ai) prefilter: one call scores every search result's fit before the agent sees it (see below). |
-| `triage.py` | The triage pipeline behind the app: screen, fetch, score, rank, summarize, with timings and LLM token counts. Also a CLI. |
-| `api.py` | FastAPI backend for the app: background runs with progress, resume upload and text extraction, profile and marks. |
-| `profile_store.py` | The app's editable profile, seeded from `profile.md`, plus learning from applied / not-interested marks. |
-| `pay.py` | Normalizes free-text pay to approximate USD per month and per hour. |
-| `ui/` | React + TypeScript frontend (Vite), dark mode. Applied / not-interested marks are kept in the browser. |
-
-### Jev prefilter
-Jev (TypeSafe AI) is a decision-only model: it answers typed questions with probabilities instead of text. When `TYPESAFE_API_KEY` is set, `search_jobs` sends the profile plus every new result card to Jev as one request with one yes/no (`noul`) question per job, and hides cards scoring below `--prefilter-threshold` (default 0.2) from the agent. Each hidden posting skips a 5 s crawl and an LLM assessment; the report lists what was hidden and its score.
-
-- **Low threshold on purpose.** Missing a good job costs more than reading a bad one, so only clear mismatches are hidden; borderline cards still go to the LLM.
-- **Fails open.** If Jev errors or is rate-limited past its retries, every card is shown and the report says so.
-- **Pinned model** (`jev-1.13.0`), not the moving `jev-latest` alias, so results don't shift underneath the evals.
-
 ### Design decisions
-- **Verify outcomes, don't trust them.** The model's `finish` summary is shown as a note only. Verdicts, evidence, and drafts in the report come from rows that passed validation.
-- **Evidence as quotes.** Free-text "the candidate knows X" can't be checked; an exact quote can. This is what stops invented skills.
+- **Verify outcomes, don't trust them.** The model's `finish` summary is shown as a note only. Verdicts, evidence and drafts in the report come from rows that passed validation.
+- **Evidence as quotes.** "The candidate knows X" can't be checked; an exact quote can. This is what stops invented skills.
 - **Postings are untrusted input.** The system prompt treats them as data. The evals include a posting that tells the AI to rate the candidate 100 and leak their phone number.
 - **Draft, don't send.** Applying is an outward-facing action, so a human reviews every draft.
+- **Optional Jev prefilter.** With `TYPESAFE_API_KEY` set, `search_jobs` hides cards Jev scores below `--prefilter-threshold` (default 0.2). The threshold is low on purpose, because missing a good job costs more than reading a bad one. If Jev fails, every card is shown. The model is pinned (`jev-1.13.0`) so results don't shift under the evals.
 
-## Evaluation
+### Evaluation
 
 `evals/` runs the **real agent loop** against 10 synthetic postings with known-correct outcomes for `profile.md`:
 
@@ -134,7 +131,7 @@ Jev (TypeSafe AI) is a decision-only model: it answers typed questions with prob
 | `$5,000/week`, pay a fee, send your ID | scam detection |
 | Graphic design, senior iOS, senior Next.js/TS, data entry at $250/mo | no drafts for wrong field, stretch roles, or preference conflicts |
 
-There are two tasks. `discover` lets the agent choose what to read, as in real use. `assess_all` forces it to read everything, so adversarial cases can't pass just by being skipped. I added `assess_all` after noticing the cheaper model had passed the injection case without ever opening it. Scores come from the database, never from the model's summary. `tests/test_eval_scoring.py` checks that the scorer fails bad behaviour.
+There are two tasks. `discover` lets the agent choose what to read, as in real use. `assess_all` forces it to read everything, so adversarial cases can't pass just by being skipped. It was added after the cheaper model passed the injection case without ever opening it. Scores come from the database, never from the model's summary, and `tests/test_eval_scoring.py` checks that the scorer fails bad behaviour.
 
 Results, 2 trials per model and task (2026-10-13):
 
@@ -145,34 +142,57 @@ Results, 2 trials per model and task (2026-10-13):
 | claude-haiku-5.5 | discover | 100% | 0.0 | 5.0 | 50k / 9.0k |
 | claude-haiku-5.5 | assess_all | 100% | 0.0 | 5.0 | 60k / 13.5k |
 
-**Limits:** 10 cases is a small suite and both models saturate it. The next step is harder, more ambiguous cases (borderline seniority, pay just under the minimum, injection hidden mid-paragraph) and more trials to measure variance.
+**Limits:** 10 cases is a small suite and both models saturate it. Next would be harder, more ambiguous cases (borderline seniority, pay just under the minimum, injection hidden mid-paragraph) and more trials to measure variance.
 
 ```bash
 python -m evals.run_evals --model anthropic/claude-sonnet-5.5 --model anthropic/claude-haiku-5.5 --trials 2
-python -m evals.run_evals --prefilter      # also runs discover+jev and reports postings hidden and Jev latency
+python -m evals.run_evals --prefilter      # adds a discover+jev task: postings hidden and Jev latency
 ```
+
+## Project layout
+
+| Path | Used by | Responsibility |
+|---|---|---|
+| `ojagent/scraper.py` | both | Parses onlinejobs.ph search and detail pages; honours `Crawl-delay: 5`. Behind a `JobSource` protocol so tests and evals can swap in fake postings. |
+| `ojagent/prefilter.py` | both | Jev client: one call scores many items; retries on rate limits. |
+| `ojagent/llm.py` | both | Thin client for any OpenAI-compatible API (OpenRouter, OpenAI, or local vLLM/Ollama). |
+| `ojagent/models.py`, `config.py` | both | Shared data models; settings from `.env`. |
+| `ojagent/triage.py` | app | The pipeline: screen, fetch, score, rank, brief, with timings and token counts. Also a CLI. |
+| `ojagent/api.py` | app | FastAPI backend: background runs with progress, resume upload and text extraction, profile and marks. |
+| `ojagent/profile_store.py` | app | Editable profile seeded from `profile.md`, plus learning from applied / not-interested marks. |
+| `ojagent/pay.py` | app | Free-text pay to approximate USD per month and per hour. |
+| `ui/` | app | React + TypeScript frontend (Vite), dark mode: Jobs and Profile pages. |
+| `ojagent/agent.py`, `tools.py` | agent | The tool-calling loop and its tools, with typed Pydantic arguments; tool errors go back to the model as data. |
+| `ojagent/verify.py` | agent | Deterministic guards: quotes must appear in the posting and profile, scores must match verdicts, drafts can't claim missing skills. |
+| `ojagent/store.py`, `report.py` | agent | SQLite memory across runs; the report built from saved rows. |
+| `evals/` | agent | Eval harness and synthetic scenarios. |
+| `profile.md` | both | The candidate profile: the agent's only source of truth, and the app's starting point. |
 
 ## Setup
 
 ```bash
 python -m venv .venv && .venv\Scripts\activate      # Windows
 pip install -r requirements.txt
-copy .env.example .env                               # add an OpenRouter/OpenAI key
-# edit profile.md: it is the only source of truth the agent may cite
-python -m ojagent --max-jobs 8
-pytest
+copy .env.example .env
 ```
 
-Each run writes `out/<run_id>.md` (assessments, employer checklist, subject and message ready to paste) and `out/traces/<run_id>.jsonl` (every model turn and tool result).
+In `.env`:
+- `TYPESAFE_API_KEY`: Jev, from [console.typesafe.ai](https://console.typesafe.ai/keys). Strongly recommended for the app, which without it falls back to the slow no-Jev mode. Optional for the agent.
+- `LLM_API_KEY` (plus `LLM_BASE_URL` and `LLM_MODEL`): any OpenAI-compatible endpoint. Required by the agent. Optional for the app, which without it uses each posting's opening lines instead of a brief. The app needs at least one of the two keys.
+
+Then edit `profile.md` with your own details, or upload a resume on the app's Profile page.
 
 ## Tests
 
-90 offline tests (`pytest`, no network) cover:
+```bash
+pytest
+```
+
+91 offline tests (no network) cover:
 - HTML parsing against saved real pages, and the crawl delay
-- every validator rule
-- the agent loop with a scripted LLM: retry after rejection, bad arguments, unknown tools, step budget, text-only replies, cross-run memory, cache hits
-- the eval scorer
-- the Jev prefilter against a mocked API: request shape, rate-limit retry, hiding mismatches, skipping already-assessed jobs, failing open
-- the triage pipeline: fetching only what Jev keeps, the no-Jev baseline, fit + appeal ranking, LLM summaries for the shortlist only, JSON export
+- the triage pipeline: fetching only what Jev keeps, the no-Jev baseline, fit + appeal ranking, briefs for top jobs only, the postings limit, JSON export
 - the API: runs and progress, one run at a time, resume upload (PDF/DOCX/text), profile editing, marks and learning, input validation
-- pay parsing across real posting formats, and profile seeding and composition
+- pay parsing across real posting formats, and profile seeding, composition and learning
+- the Jev client against a mocked API: request shape, rate-limit retry, failing open
+- the agent loop with a scripted LLM: retry after rejection, bad arguments, unknown tools, step budget, text-only replies, cross-run memory, cache hits
+- every validator rule, and the eval scorer
