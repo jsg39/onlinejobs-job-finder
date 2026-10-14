@@ -36,7 +36,7 @@ class FakeLLM:
         self.replies = replies
         self.titles: list[str] = []
 
-    def complete(self, messages, tools):
+    def complete(self, messages):
         posting = messages[1]["content"].split("<posting>")[1].split("</posting>")[0]
         job = json.loads(posting)
         self.titles.append(job["title"])

@@ -1,14 +1,13 @@
-"""Fast first-pass fit filter, run on search results before the agent reads them.
+"""Jev client: fast, cheap typed decisions about postings.
 
 Jev (TypeSafe AI) is a decision-only model: it answers typed questions with
 probabilities instead of text. One call scores every card on a results page, so
-clearly irrelevant postings never cost a 5 s crawl or an LLM assessment.
+clearly irrelevant postings never cost a 5 s crawl or an LLM call.
 """
 
 from __future__ import annotations
 
 import time
-from typing import Protocol
 
 import httpx
 
@@ -17,12 +16,6 @@ from .models import JobSummary
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 JEV_MODEL = "jev-1.13.0"
 RETRY_STATUSES = {429, 529}
-
-
-class Prefilter(Protocol):
-    def fit_probabilities(self, profile: str, jobs: list[JobSummary]) -> dict[str, float]:
-        """Probability (0-1) that the candidate is a realistic fit, keyed by job_id."""
-        ...
 
 
 class JevPrefilter:

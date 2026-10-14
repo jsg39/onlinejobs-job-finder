@@ -16,7 +16,6 @@ class Settings:
     api_key: str
     base_url: str | None
     model: str
-    db_path: Path
     out_dir: Path
     typesafe_api_key: str | None = None
 
@@ -35,7 +34,6 @@ def load_settings() -> Settings:
         api_key=key,
         base_url=base_url,
         model=os.getenv("LLM_MODEL", DEFAULT_MODEL),
-        db_path=ROOT / "data" / "ojagent.sqlite3",
         out_dir=ROOT / "out",
         typesafe_api_key=os.getenv("TYPESAFE_API_KEY") or None,
     )

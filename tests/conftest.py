@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
-from ojagent.llm import ToolCall, Turn
 from ojagent.models import JobPosting, JobSummary
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -61,32 +59,6 @@ class FakeSource:
             raise ValueError("Not a job page")
         return self.postings[job_id]
 
-
-class ScriptedLLM:
-    """Replays a fixed list of turns; records what it was sent."""
-
-    model = "scripted"
-
-    def __init__(self, turns: list[list[tuple[str, dict]] | str]):
-        self.turns = list(turns)
-        self.seen: list[list[dict]] = []
-
-    def complete(self, messages, tools):
-        self.seen.append(list(messages))
-        if not self.turns:
-            return Turn(content="(out of script)")
-        turn = self.turns.pop(0)
-        if isinstance(turn, str):
-            return Turn(content=turn)
-        return Turn(
-            content=None,
-            tool_calls=[
-                ToolCall(f"call_{len(self.seen)}_{i}", name, json.dumps(args))
-                for i, (name, args) in enumerate(turn)
-            ],
-            input_tokens=100,
-            output_tokens=20,
-        )
 
 
 @pytest.fixture

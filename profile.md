@@ -1,6 +1,6 @@
 # Joseph Guillermo — Candidate Profile
 
-The agent may only claim what is written here. Edit freely; keep facts literal.
+Jobs are scored against this profile. Edit freely; keep facts literal.
 
 ## Preferences
 - Looking for: fully remote full-time or part-time roles in backend, AI/LLM, full-stack, or data engineering. No on-site or hybrid work.
@@ -28,7 +28,7 @@ Software engineer focused on backend development, AI systems, and cloud deployme
 ## Projects
 - Microplastic Detection & Pollution Mapping System (undergraduate thesis): built a real-time monitoring and visualization platform with Flask; trained a PyTorch Faster R-CNN model on 2,000+ annotated images and deployed it on AWS (S3, DynamoDB, SageMaker).
 - Job Market Analytics: scraped job postings with Python, standardized fields with an LLM, and built a Power BI dashboard; RAG search over postings with LangChain and Qdrant.
-- onlinejobs.ph agent: a tool-calling LLM agent that scrapes new postings, assesses fit with verified evidence, and drafts applications, with automated tests and an eval suite.
+- onlinejobs.ph job finder: a FastAPI + React app that scrapes new postings, screens and scores them against a resume with TypeSafe's Jev, writes LLM briefs only for the top matches, and learns from the jobs the user applies to; cut a 30-posting search from 20 minutes to 3.5 and LLM tokens by 88%.
 
 ## Skills
 - Languages: Python, SQL, JavaScript

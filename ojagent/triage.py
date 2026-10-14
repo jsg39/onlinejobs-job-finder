@@ -204,7 +204,7 @@ class _LLMJson:
                 f"<profile>\n{self.profile}\n</profile>\n\n"
                 f"<posting>\n{json.dumps(job, ensure_ascii=False)}\n</posting>"
             )},
-        ], [])
+        ])
         self.calls += 1
         self.input_tokens += turn.input_tokens
         self.output_tokens += turn.output_tokens

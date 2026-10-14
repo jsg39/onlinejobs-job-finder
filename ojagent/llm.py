@@ -1,4 +1,4 @@
-"""Thin LLM interface so the agent loop doesn't depend on one vendor SDK.
+"""Thin LLM interface so the pipeline doesn't depend on one vendor SDK.
 
 Any OpenAI-compatible endpoint works: OpenAI, OpenRouter (Claude, GPT, ...), or a
 local server such as Ollama or vLLM.
@@ -6,40 +6,23 @@ local server such as Ollama or vLLM.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Protocol
 
 from openai import OpenAI
 
 
 @dataclass
-class ToolCall:
-    id: str
-    name: str
-    arguments: str  # raw JSON string from the model
-
-
-@dataclass
 class Turn:
     content: str | None
-    tool_calls: list[ToolCall] = field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
-
-    def as_message(self) -> dict:
-        msg: dict = {"role": "assistant", "content": self.content or ""}
-        if self.tool_calls:
-            msg["tool_calls"] = [
-                {"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}}
-                for c in self.tool_calls
-            ]
-        return msg
 
 
 class LLM(Protocol):
     model: str
 
-    def complete(self, messages: list[dict], tools: list[dict]) -> Turn: ...
+    def complete(self, messages: list[dict]) -> Turn: ...
 
 
 class OpenAICompatibleLLM:
@@ -48,22 +31,15 @@ class OpenAICompatibleLLM:
         self.temperature = temperature
         self.client = OpenAI(api_key=api_key, base_url=base_url, max_retries=3, timeout=120)
 
-    def complete(self, messages: list[dict], tools: list[dict]) -> Turn:
+    def complete(self, messages: list[dict]) -> Turn:
         resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
-            **({"tools": tools} if tools else {}),
+            model=self.model, messages=messages, temperature=self.temperature
         )
         if not resp.choices:  # some free providers return an empty body under load
             raise RuntimeError(f"{self.model} returned no choices")
-        msg = resp.choices[0].message
         usage = resp.usage
         return Turn(
-            content=msg.content,
-            tool_calls=[
-                ToolCall(c.id, c.function.name, c.function.arguments) for c in msg.tool_calls or []
-            ],
+            content=resp.choices[0].message.content,
             input_tokens=usage.prompt_tokens if usage else 0,
             output_tokens=usage.completion_tokens if usage else 0,
         )

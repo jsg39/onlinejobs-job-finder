@@ -1,30 +1,12 @@
-"""Jev prefilter: request shape, filtering in search_jobs, and failing open (no network)."""
+"""Jev client against a mocked API: request shape and rate-limit retry (no network)."""
 
 import json
 
 import httpx
 
-from ojagent.agent import Agent
-from ojagent.models import FitAssessment, JobSummary
+from ojagent.models import JobSummary
 from ojagent.prefilter import JEV_URL, JevPrefilter
-from ojagent.report import render
-from ojagent.store import Store
-from ojagent.tools import SearchJobsArgs, Toolbox
-from tests.conftest import PROFILE, ScriptedLLM
-from tests.test_agent import GOOD_ASSESSMENT
-
-
-class FixedPrefilter:
-    def __init__(self, probs=None, error=None):
-        self.probs = probs or {}
-        self.error = error
-        self.calls: list[list[str]] = []
-
-    def fit_probabilities(self, profile, jobs):
-        self.calls.append([j.job_id for j in jobs])
-        if self.error:
-            raise self.error
-        return {j.job_id: self.probs[j.job_id] for j in jobs}
+from tests.conftest import PROFILE
 
 
 def jev_client(handler):
@@ -66,46 +48,3 @@ def test_jev_retries_when_rate_limited(monkeypatch):
 
     jev = jev_client(handler)
     assert jev.fit_probabilities(PROFILE, [JobSummary(job_id="1", title="t", url="u")]) == {"1": 0.7}
-
-
-def test_search_hides_clear_mismatches(source):
-    pre = FixedPrefilter({"100": 0.85, "200": 0.03})
-    box = Toolbox(source, Store(), PROFILE, "run", prefilter=pre)
-    result = box.search_jobs(SearchJobsArgs())
-    assert [j["job_id"] for j in result["jobs"]] == ["100"]
-    assert result["hidden_as_clear_mismatches"] == 1
-    assert box.prefiltered == {"200": ("Graphic Designer", 0.03)}
-
-
-def test_prefilter_skips_already_assessed_jobs(source):
-    store = Store()
-    store.save_posting(source.postings["100"])
-    store.save_assessment(FitAssessment.model_validate(GOOD_ASSESSMENT), "old-run")
-    pre = FixedPrefilter({"200": 0.9})
-    box = Toolbox(source, store, PROFILE, "run", prefilter=pre)
-    box.search_jobs(SearchJobsArgs())
-    assert pre.calls == [["200"]]
-
-
-def test_prefilter_failure_shows_every_job(source):
-    pre = FixedPrefilter(error=httpx.ConnectError("down"))
-    box = Toolbox(source, Store(), PROFILE, "run", prefilter=pre)
-    result = box.search_jobs(SearchJobsArgs())
-    assert result["count"] == 2 and result["hidden_as_clear_mismatches"] == 0
-    assert box.prefilter_errors == ["ConnectError: down"]
-
-
-def test_run_result_reports_prefiltered_jobs(source):
-    llm = ScriptedLLM([[("search_jobs", {})], [("finish", {"summary": "none"})]])
-    agent = Agent(llm=llm, source=source, store=Store(), profile=PROFILE, max_steps=5,
-                  prefilter=FixedPrefilter({"100": 0.1, "200": 0.02}))
-    result = agent.run("go")
-    assert set(result.prefiltered) == {"100", "200"}
-
-
-def test_report_lists_skipped_jobs(source):
-    llm = ScriptedLLM([[("search_jobs", {})], [("finish", {"summary": "none"})]])
-    agent = Agent(llm=llm, source=source, store=Store(), profile=PROFILE, max_steps=5,
-                  prefilter=FixedPrefilter({"100": 0.9, "200": 0.02}))
-    report = render(agent.run("go"), [], "scripted")
-    assert "Skipped by prefilter (1):** Graphic Designer (2%)" in report

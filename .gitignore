@@ -4,4 +4,3 @@ data/
 out/
 __pycache__/
 .pytest_cache/
-evals/results/
