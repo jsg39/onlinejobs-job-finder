@@ -1,0 +1,15 @@
+.git
+.env
+.venv
+.pytest_cache
+**/__pycache__
+data
+out
+postings
+docs
+tests
+*.txt
+!requirements.txt
+ui/node_modules
+ui/dist
+ui/tsconfig.tsbuildinfo

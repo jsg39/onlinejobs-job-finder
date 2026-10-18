@@ -2,6 +2,9 @@
 
     uvicorn ojagent.api:app --port 8000
 
+With the UI built (`npm run build` in ui/), the same server also serves it at /, which is
+how the Docker image runs.
+
 A run scrapes the job site the user picked (onlinejobs.ph, JobStreet or both) with a 5 s
 delay between requests, so it takes minutes. It runs on a background thread; the UI
 polls GET /api/runs/{id}. One run at a time keeps the crawl polite.
@@ -21,6 +24,7 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import ROOT, load_settings
@@ -133,6 +137,7 @@ def create_app(
     profile_path: Path = ROOT / "profile.md",
     data_dir: Path = ROOT / "data",
     out_dir: Path = ROOT / "out",
+    ui_dir: Path = ROOT / "ui" / "dist",
 ) -> FastAPI:
     app = FastAPI(
         title="ojagent",
@@ -268,6 +273,10 @@ def create_app(
         if not path.exists():
             raise HTTPException(404, "No results yet. Start a search.")
         return json.loads(path.read_text(encoding="utf-8"))
+
+    # Mounted last so /api routes win. The UI routes by hash, so serving files is enough.
+    if (ui_dir / "index.html").exists():
+        app.mount("/", StaticFiles(directory=ui_dir, html=True), name="ui")
 
     return app
 

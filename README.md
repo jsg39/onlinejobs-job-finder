@@ -47,6 +47,18 @@ Caveats: this is a single run, and the LLM was a free model (`nvidia/nemotron-3-
 
 ## Run it
 
+### With Docker (easiest)
+
+Fill in `.env` first (see [Setup](#setup)), then:
+
+```bash
+docker compose up -d --build
+```
+
+Open http://localhost:8000. One container serves both the UI and the API. Your profile, marks and results are kept in `data/` and `out/` on your machine, so they survive rebuilds; `profile.md` is mounted read-only. Stop it with `docker compose down`. After pulling new code, run the `up` command again to rebuild.
+
+### For development
+
 Two terminals. The backend is FastAPI; the frontend is React + TypeScript (Vite) in `ui/`:
 
 ```bash
@@ -64,7 +76,7 @@ Open http://localhost:5173. The dev server forwards `/api` to the backend. A sea
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/runs` | Start a search: `{"keyword": "python", "postings": 30}` (5–90). Returns 409 if one is already running. |
+| `POST /api/runs` | Start a search: `{"keyword": "python", "postings": 30, "source": "onlinejobs"}` (5–90; source `onlinejobs`, `jobstreet` or `all`). Returns 409 if one is already running. |
 | `GET /api/runs/{id}` · `GET /api/runs/active` | Progress (stage, done/total, elapsed), and results when done. |
 | `GET /api/latest` | The most recent results, also saved as `out/latest.json`. |
 | `GET` · `PUT /api/profile` | The editable profile, what's been learned from your marks, and the composed text Jev ranks against. |

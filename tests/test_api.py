@@ -41,6 +41,7 @@ def client(tmp_path):
         profile_path=tmp_path / "profile.md",
         data_dir=tmp_path / "data",
         out_dir=tmp_path / "out",
+        ui_dir=tmp_path / "ui",  # no build: the API runs on its own
     )
     c = TestClient(app)
     c.seen_profiles = seen_profiles
@@ -147,6 +148,24 @@ def test_keyword_is_validated(client):
 
 def test_latest_is_404_before_any_run(client):
     assert client.get("/api/latest").status_code == 404
+
+
+def test_built_ui_is_served_at_root_without_shadowing_the_api(tmp_path):
+    ui = tmp_path / "dist"
+    (ui / "assets").mkdir(parents=True)
+    (ui / "index.html").write_text("<div id=root></div>", encoding="utf-8")
+    (ui / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
+    app = create_app(make_source=lambda key: FakeSource([]), make_jev=lambda: None, make_llm=lambda: None,
+                     profile_path=tmp_path / "profile.md", data_dir=tmp_path / "data",
+                     out_dir=tmp_path / "out", ui_dir=ui)
+    c = TestClient(app)
+    assert c.get("/").text == "<div id=root></div>"
+    assert c.get("/assets/app.js").status_code == 200
+    assert c.get("/api/latest").status_code == 404  # still the API, not a file lookup
+
+
+def test_without_a_ui_build_root_is_404(client):
+    assert client.get("/").status_code == 404
 
 
 def test_extract_docx_resume(tmp_path):

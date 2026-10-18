@@ -1,0 +1,13 @@
+# docker compose up --build, then open http://localhost:8000
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      # Profile, marks and results live on the host, so they survive rebuilds.
+      - ./data:/app/data
+      - ./out:/app/out
+      - ./profile.md:/app/profile.md:ro
+    restart: unless-stopped
