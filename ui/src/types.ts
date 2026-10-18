@@ -1,5 +1,12 @@
 // Shape of out/latest.json, written by ojagent/triage.py:to_json.
 
+export type Source = "onlinejobs" | "jobstreet";
+
+export const SOURCES: Record<Source, { label: string; max: number }> = {
+  onlinejobs: { label: "onlinejobs.ph", max: 90 },
+  jobstreet: { label: "JobStreet", max: 90 },
+};
+
 export interface Job {
   id: string;
   title: string;
@@ -36,6 +43,7 @@ export interface HiddenJob {
 
 export interface Run {
   keyword?: string;
+  source?: string; // absent in results saved before JobStreet support
   generated_at: string;
   used_jev: boolean;
   min_rank: number;
@@ -65,6 +73,7 @@ export interface RunStatus {
   id: string;
   keyword: string;
   postings: number;
+  source: string;
   status: "running" | "done" | "error";
   stage: string;
   stage_label: string;

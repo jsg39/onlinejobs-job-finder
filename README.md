@@ -1,13 +1,13 @@
-# onlinejobs.ph Job Finder
+# Job Finder
 
-A web app (FastAPI + React) for finding remote work on [onlinejobs.ph](https://www.onlinejobs.ph). Search, get a shortlist ranked against your resume and preferences, filter it, and mark what you apply to; the ranking learns from your marks. [Jev](https://docs.typesafe.ai) does the fast, cheap scoring, and an LLM writes short briefs for the top jobs only.
+A web app (FastAPI + React) for finding work on [onlinejobs.ph](https://www.onlinejobs.ph) and [JobStreet Philippines](https://ph.jobstreet.com). Pick a site, search, get a shortlist ranked against your resume and preferences, filter it, and mark what you apply to; the ranking learns from your marks. [Jev](https://docs.typesafe.ai) does the fast, cheap scoring, and an LLM writes short briefs for the top jobs only.
 
 
 ![How the job finder works](docs/triage-pipeline.png)
 
 ## How it works
 
-1. **Search.** Scrape the newest postings for your keyword (default `python`), as many as you choose (5–90). The scraper waits 5 s between requests, as the site's robots.txt asks.
+1. **Search.** Scrape the newest postings for your keyword (default `python`) on the site you pick, as many as you choose (5–90). The scraper waits 5 s between requests, as onlinejobs.ph's robots.txt asks; JobStreet gets the same delay. JobStreet's robots.txt only allows `?keywords` search URLs, and the app's paged `/{keyword}-jobs` URLs fall outside that, so JobStreet searches go beyond what its robots.txt permits.
 2. **Jev screens.** One Jev call asks "is this a realistic fit?" for every search card at once. Clear mismatches (under 20%) are dropped and never fetched.
 3. **Read.** Only the likely fits are fetched in full. At 5 s each, this is the slowest step, which is why step 2 matters.
 4. **Jev scores** each job against your profile: **fit** 0–4 (would they hire you?), **appeal** 0–4 (would you want it?) and a scam signal. **Match** is the average of fit and appeal.
@@ -77,6 +77,7 @@ The same pipeline also runs without the UI and writes a Markdown report to `out/
 python -m ojagent.triage                       # Jev screens and ranks, the LLM writes briefs
 python -m ojagent.triage --no-jev              # baseline: the LLM scores and summarizes everything
 python -m ojagent.triage --keyword fastapi --limit 45
+python -m ojagent.triage --source jobstreet --keyword python
 ```
 
 ## Project layout
@@ -84,6 +85,8 @@ python -m ojagent.triage --keyword fastapi --limit 45
 | Path | Responsibility |
 |---|---|
 | `ojagent/scraper.py` | Parses onlinejobs.ph search and detail pages; honours `Crawl-delay: 5`. Behind a `JobSource` protocol so tests can swap in fake postings. |
+| `ojagent/jobstreet.py` | JobStreet Philippines client: reads the page state embedded in search and job pages. Uses `curl_cffi` with a Chrome fingerprint because Cloudflare blocks plain HTTP clients; never requests `/api/` or `/graphql`. |
+| `ojagent/sources.py` | The searchable sites: label, client and per-run posting cap for each. |
 | `ojagent/prefilter.py` | Jev client: one call scores many items; retries on rate limits. Model pinned to `jev-1.13.0` so scores don't shift underneath you. |
 | `ojagent/triage.py` | The pipeline: screen, fetch, score, rank, brief, with timings and token counts. Also a CLI. |
 | `ojagent/api.py` | FastAPI backend: background runs with progress, resume upload and text extraction, profile and marks. |

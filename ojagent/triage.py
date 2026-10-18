@@ -27,7 +27,8 @@ from .llm import LLM, OpenAICompatibleLLM
 from .models import JobPosting, JobSummary
 from .pay import usd_per_hour, usd_per_month
 from .prefilter import JevPrefilter
-from .scraper import CRAWL_DELAY_SECONDS, JobSource, OnlineJobsClient
+from .scraper import CRAWL_DELAY_SECONDS, JobSource
+from .sources import SOURCES, make_source
 
 SEARCH_PAGE_SIZE = 30  # cards per onlinejobs.ph results page
 
@@ -323,7 +324,7 @@ def triage(
     return result
 
 
-def render(result: TriageResult, profile: str, scam_flag: float = 0.3) -> str:
+def render(result: TriageResult, profile: str, scam_flag: float = 0.3, source_label: str = "onlinejobs.ph") -> str:
     worth = result.shortlist
     rest = [s for s in result.scored if s not in worth]
     tm = result.timings
@@ -336,7 +337,7 @@ def render(result: TriageResult, profile: str, scam_flag: float = 0.3) -> str:
         "",
         f"Mode: {mode}.",
         "",
-        f"Scanned **{len(result.cards)}** newest onlinejobs.ph postings · "
+        f"Scanned **{len(result.cards)}** newest {source_label} postings · "
         + (f"Jev hid **{len(result.hidden)}** clear mismatches · " if result.used_jev else "")
         + f"fetched **{fetched}** · **{len(worth)}** worth a look "
         f"(rank ≥ {result.min_rank}/4, the mean of fit and appeal).",
@@ -447,6 +448,8 @@ def to_json(result: TriageResult, profile: str) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ojagent.triage", description=__doc__.split("\n\n")[0])
+    parser.add_argument("--source", choices=sorted(SOURCES), default="onlinejobs",
+                        help="Job site to scan (default: onlinejobs).")
     parser.add_argument("--pages", type=int, default=1, help="Search pages to scan, 30 postings each.")
     parser.add_argument("--limit", type=int, help="Scan this many newest postings (overrides --pages).")
     parser.add_argument("--keyword", default="python", help="Search keyword (default: python).")
@@ -472,14 +475,15 @@ def main(argv: list[str] | None = None) -> int:
     jev = None if args.no_jev else JevPrefilter(settings.typesafe_api_key)
 
     sys.stdout.reconfigure(encoding="utf-8")
-    print(f"Scanning {args.pages} page(s) for {args.keyword!r}"
+    label = SOURCES[args.source][0]
+    print(f"Scanning {args.pages} page(s) of {label} for {args.keyword!r}"
           f"{'' if args.no_llm else f' · LLM {model}'}; each posting fetch waits "
-          f"{CRAWL_DELAY_SECONDS:.0f} s (robots.txt)...")
+          f"{CRAWL_DELAY_SECONDS:.0f} s...")
     result = triage(
-        OnlineJobsClient(), jev, profile, llm=llm, pages=args.pages, limit=args.limit, keyword=args.keyword,
+        make_source(args.source), jev, profile, llm=llm, pages=args.pages, limit=args.limit, keyword=args.keyword,
         card_threshold=args.threshold, min_rank=args.min_rank,
     )
-    report = render(result, profile)
+    report = render(result, profile, source_label=label)
     mode = "no-jev" if args.no_jev else "jev"
     path = settings.out_dir / f"triage-{datetime.now():%Y%m%d-%H%M%S}-{mode}.md"
     path.parent.mkdir(parents=True, exist_ok=True)

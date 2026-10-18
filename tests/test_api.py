@@ -23,14 +23,19 @@ RESUME = "Jane Dev. Python, FastAPI, PostgreSQL. " * 10
 def client(tmp_path):
     (tmp_path / "profile.md").write_text(BASE_PROFILE, encoding="utf-8")
     seen_profiles: list[str] = []
+    requested_sources: list[str] = []
 
     class RecordingJev(FakeJev):
         def fit_probabilities(self, profile, jobs):
             seen_profiles.append(profile)
             return super().fit_probabilities(profile, jobs)
 
+    def make_source(key):
+        requested_sources.append(key)
+        return FakeSource([PYTHON_JOB, DESIGN_JOB])
+
     app = create_app(
-        make_source=lambda: FakeSource([PYTHON_JOB, DESIGN_JOB]),
+        make_source=make_source,
         make_jev=lambda: RecordingJev({"100": 0.9, "200": 0.05}, FITS),
         make_llm=lambda: FakeLLM({PYTHON_JOB.title: {"role": "FastAPI backend work", "fits": ["FastAPI"]}}),
         profile_path=tmp_path / "profile.md",
@@ -39,6 +44,7 @@ def client(tmp_path):
     )
     c = TestClient(app)
     c.seen_profiles = seen_profiles
+    c.requested_sources = requested_sources
     c.tmp = tmp_path
     return c
 
@@ -61,6 +67,45 @@ def test_run_returns_ranked_jobs_and_saves_latest(client):
     assert [j["id"] for j in jobs] == ["100"] and jobs[0]["brief"]["role"] == "FastAPI backend work"
     assert run["result"]["keyword"] == "fastapi"
     assert client.get("/api/latest").json()["jobs"][0]["id"] == "100"
+
+
+def test_default_source_is_onlinejobs_in_view_and_saved_result(client):
+    run = wait(client, client.post("/api/runs", json={}).json()["id"])
+    assert run["source"] == "onlinejobs"
+    assert run["result"]["source"] == "onlinejobs"
+    assert client.get("/api/latest").json()["source"] == "onlinejobs"
+    assert client.requested_sources == ["onlinejobs"]
+
+
+def test_jobstreet_source_reaches_make_source(client):
+    start = client.post("/api/runs", json={"source": "jobstreet"})
+    assert start.status_code == 202
+    run = wait(client, start.json()["id"])
+    assert run["status"] == "done", run["error"]
+    assert run["source"] == "jobstreet" and run["result"]["source"] == "jobstreet"
+    assert client.requested_sources == ["jobstreet"]
+
+
+def test_search_stage_label_names_the_site():
+    from ojagent.api import Run
+
+    assert Run(keyword="python", postings=30, source="jobstreet").view()["stage_label"] == "Searching JobStreet"
+    assert Run(keyword="python", postings=30).view()["stage_label"] == "Searching onlinejobs.ph"
+
+
+def test_unknown_source_is_rejected(client):
+    assert client.post("/api/runs", json={"source": "indeed"}).status_code == 422
+    assert client.requested_sources == []
+
+
+def test_postings_over_the_source_max_are_rejected(client, monkeypatch):
+    import ojagent.sources as sources
+
+    monkeypatch.setitem(sources.SOURCES, "jobstreet", ("JobStreet", sources.JobStreetClient, 30))
+    assert client.post("/api/runs", json={"source": "jobstreet", "postings": 60}).status_code == 422
+    start = client.post("/api/runs", json={"source": "jobstreet", "postings": 30})
+    assert start.status_code == 202
+    wait(client, start.json()["id"])
 
 
 def test_uploaded_resume_replaces_experience_but_keeps_preferences(client):

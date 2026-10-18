@@ -2,9 +2,9 @@
 
     uvicorn ojagent.api:app --port 8000
 
-A run scrapes onlinejobs.ph with the 5 s crawl delay, so it takes minutes. It runs on a
-background thread; the UI polls GET /api/runs/{id}. One run at a time keeps the
-crawl polite.
+A run scrapes the job site the user picked (onlinejobs.ph or JobStreet) with a 5 s
+delay between requests, so it takes minutes. It runs on a background thread; the UI
+polls GET /api/runs/{id}. One run at a time keeps the crawl polite.
 """
 
 from __future__ import annotations
@@ -27,14 +27,14 @@ from .config import ROOT, load_settings
 from .llm import LLM, OpenAICompatibleLLM
 from .prefilter import JevPrefilter
 from .profile_store import JobSnapshot, Mark, Profile, ProfileStore, learned_summary, seed_from_markdown
-from .scraper import JobSource, OnlineJobsClient
+from . import sources
+from .scraper import JobSource
 from .triage import render, to_json, triage
 
 MAX_RESUME_BYTES = 5 * 1024 * 1024
 STAGE_LABELS = {
-    "search": "Searching onlinejobs.ph",
     "screen": "Jev is screening postings",
-    "fetch": "Reading postings (5 s each, per robots.txt)",
+    "fetch": "Reading postings (5 s wait between requests)",
     "score": "Jev is scoring postings",
     "summarize": "Writing summaries",
     "done": "Done",
@@ -72,13 +72,15 @@ class MarkRequest(BaseModel):
 
 class RunRequest(BaseModel):
     keyword: str = Field(default="python", min_length=1, max_length=60)
-    postings: int = Field(default=30, ge=5, le=90)  # newest postings to scan
+    postings: int = Field(default=30, ge=5, le=90)  # newest postings to scan, capped per source
+    source: Literal["onlinejobs", "jobstreet"] = "onlinejobs"
 
 
 @dataclass
 class Run:
     keyword: str
     postings: int
+    source: str = "onlinejobs"
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     status: str = "running"  # running | done | error
     stage: str = "search"
@@ -89,14 +91,20 @@ class Run:
     error: str | None = None
     result: dict | None = None
 
+    def stage_label(self) -> str:
+        if self.stage == "search":
+            return f"Searching {sources.SOURCES[self.source][0]}"
+        return STAGE_LABELS.get(self.stage, self.stage)
+
     def view(self) -> dict:
         return {
             "id": self.id,
             "keyword": self.keyword,
             "postings": self.postings,
+            "source": self.source,
             "status": self.status,
             "stage": self.stage,
-            "stage_label": STAGE_LABELS.get(self.stage, self.stage),
+            "stage_label": self.stage_label(),
             "done": self.done,
             "total": self.total,
             "elapsed": round((self.finished or time.time()) - self.started, 1),
@@ -119,14 +127,17 @@ def _default_llm() -> LLM | None:
 
 
 def create_app(
-    make_source: Callable[[], JobSource] = OnlineJobsClient,
+    make_source: Callable[[str], JobSource] = sources.make_source,
     make_jev: Callable[[], JevPrefilter | None] = _default_jev,
     make_llm: Callable[[], LLM | None] = _default_llm,
     profile_path: Path = ROOT / "profile.md",
     data_dir: Path = ROOT / "data",
     out_dir: Path = ROOT / "out",
 ) -> FastAPI:
-    app = FastAPI(title="ojagent", description="Job triage for onlinejobs.ph")
+    app = FastAPI(
+        title="ojagent",
+        description="Job triage for onlinejobs.ph and JobStreet Philippines",
+    )
     store = ProfileStore(data_dir, profile_path)
     runs: dict[str, Run] = {}
     lock = threading.Lock()
@@ -148,13 +159,15 @@ def create_app(
             if jev is None and llm is None:
                 raise RuntimeError("Set TYPESAFE_API_KEY (and optionally an LLM key) in .env")
             profile = store.composed()
-            result = triage(make_source(), jev, profile, llm=llm, limit=run.postings,
+            label = sources.SOURCES[run.source][0]
+            result = triage(make_source(run.source), jev, profile, llm=llm, limit=run.postings,
                             keyword=run.keyword, progress=progress)
             data = to_json(result, profile)
             data["keyword"] = run.keyword
+            data["source"] = run.source
             out_dir.mkdir(parents=True, exist_ok=True)
             stem = out_dir / f"triage-{datetime.now():%Y%m%d-%H%M%S}-{'jev' if jev else 'no-jev'}"
-            stem.with_suffix(".md").write_text(render(result, profile), encoding="utf-8")
+            stem.with_suffix(".md").write_text(render(result, profile, source_label=label), encoding="utf-8")
             text = json.dumps(data, ensure_ascii=False, indent=1)
             stem.with_suffix(".json").write_text(text, encoding="utf-8")
             (out_dir / "latest.json").write_text(text, encoding="utf-8")
@@ -226,10 +239,13 @@ def create_app(
 
     @app.post("/api/runs", status_code=202)
     def start_run(req: RunRequest) -> dict:
+        cap = sources.SOURCES[req.source][2]
+        if req.postings > cap:
+            raise HTTPException(422, f"{sources.SOURCES[req.source][0]} allows at most {cap} postings per run.")
         with lock:
             if any(r.status == "running" for r in runs.values()):
                 raise HTTPException(409, "A search is already running.")
-            run = Run(keyword=req.keyword.strip(), postings=req.postings)
+            run = Run(keyword=req.keyword.strip(), postings=req.postings, source=req.source)
             runs[run.id] = run
         threading.Thread(target=execute, args=(run,), daemon=True).start()
         return run.view()

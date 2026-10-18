@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { getResume } from "./api";
-import type { ResumeInfo, RunStatus } from "./types";
+import { SOURCES } from "./types";
+import type { ResumeInfo, RunStatus, Source } from "./types";
 
 const KEYWORD_KEY = "ojagent:keyword";
+const SOURCE_KEY = "ojagent:source";
 const CRAWL_DELAY_S = 5;
 const MIN_POSTINGS = 5;
-const MAX_POSTINGS = 90; // the API caps a scan at three 30-card result pages
+// Each site's cap is in SOURCES (types.ts): three 30-card result pages.
 
 function savedKeyword(): string {
   try {
@@ -15,39 +17,71 @@ function savedKeyword(): string {
   }
 }
 
+function savedSource(): Source {
+  try {
+    const s = localStorage.getItem(SOURCE_KEY);
+    if (s && Object.keys(SOURCES).includes(s)) return s as Source;
+  } catch {
+    // fine: fall through to the default
+  }
+  return "onlinejobs";
+}
+
 interface Props {
   active: RunStatus | null;
-  onStart: (keyword: string, postings: number) => void;
+  onStart: (keyword: string, postings: number, source: Source) => void;
   startError: string | null;
 }
 
 export default function SearchPanel({ active, onStart, startError }: Props) {
   const [keyword, setKeyword] = useState(savedKeyword);
+  const [source, setSource] = useState<Source>(savedSource);
   const [postings, setPostings] = useState<number | "">(30);
   const [resume, setResume] = useState<ResumeInfo | null>(null);
   const running = active?.status === "running";
+  const maxPostings = SOURCES[source].max;
 
   useEffect(() => {
     getResume().then((r) => setResume(r.resume)).catch(() => {});
   }, []);
 
+  function pickSource(next: Source) {
+    setSource(next);
+    if (Number(postings) > SOURCES[next].max) setPostings(SOURCES[next].max);
+    try {
+      localStorage.setItem(SOURCE_KEY, next);
+    } catch {
+      // fine: site just isn't remembered
+    }
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const k = keyword.trim();
     if (!k) return;
-    const n = Math.min(MAX_POSTINGS, Math.max(MIN_POSTINGS, Number(postings) || 30));
+    const n = Math.min(maxPostings, Math.max(MIN_POSTINGS, Number(postings) || 30));
     setPostings(n);
     try {
       localStorage.setItem(KEYWORD_KEY, k);
     } catch {
       // fine: keyword just isn't remembered
     }
-    onStart(k, n);
+    onStart(k, n, source);
   }
 
   return (
     <section className="panel">
       <form className="search" onSubmit={submit}>
+        <label className="field site">
+          <span>Job site</span>
+          <select value={source} onChange={(e) => pickSource(e.target.value as Source)} disabled={running}>
+            {(Object.keys(SOURCES) as Source[]).map((key) => (
+              <option key={key} value={key}>
+                {SOURCES[key].label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="field grow">
           <span>Search keyword</span>
           <input
@@ -65,12 +99,12 @@ export default function SearchPanel({ active, onStart, startError }: Props) {
               type="number"
               inputMode="numeric"
               min={MIN_POSTINGS}
-              max={MAX_POSTINGS}
+              max={maxPostings}
               step={5}
               value={postings}
               onChange={(e) => setPostings(e.target.value === "" ? "" : Number(e.target.value))}
               disabled={running}
-              aria-label={`Number of newest postings to scan, ${MIN_POSTINGS} to ${MAX_POSTINGS}`}
+              aria-label={`Number of newest postings to scan, ${MIN_POSTINGS} to ${maxPostings}`}
             />
             <span aria-hidden>newest</span>
           </span>

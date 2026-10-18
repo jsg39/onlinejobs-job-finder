@@ -5,7 +5,8 @@ import { passes, useFilters } from "./filters";
 import JobCard from "./JobCard";
 import ProfilePage from "./ProfilePage";
 import SearchPanel from "./SearchPanel";
-import type { Job, Run, RunStatus } from "./types";
+import { SOURCES } from "./types";
+import type { Job, Run, RunStatus, Source } from "./types";
 import { useStatuses } from "./useStatuses";
 
 type Tab = "foryou" | "applied" | "dismissed";
@@ -29,6 +30,10 @@ function usePage(): Page {
   }, []);
   return page;
 }
+
+// Older saved results have no source; they were all onlinejobs.ph.
+const sourceLabel = (source?: string): string =>
+  (source && SOURCES[source as Source]?.label) || SOURCES.onlinejobs.label;
 
 export default function App() {
   const [run, setRun] = useState<Run | null>(null);
@@ -65,10 +70,10 @@ export default function App() {
     return () => clearInterval(timer);
   }, [active?.id, active?.status]);
 
-  const onStart = useCallback(async (keyword: string, postings: number) => {
+  const onStart = useCallback(async (keyword: string, postings: number, source: Source) => {
     setStartError(null);
     try {
-      setActive(await startRun(keyword, postings));
+      setActive(await startRun(keyword, postings, source));
       setBackendDown(false);
     } catch (e) {
       setStartError(e instanceof Error ? e.message : String(e));
@@ -130,10 +135,10 @@ export default function App() {
           {run
             ? `${groups.foryou.length} match${groups.foryou.length === 1 ? "" : "es"} from ${run.stats.scanned} "${
                 run.keyword ?? "python"
-              }" postings · ${new Date(run.generated_at).toLocaleString(undefined, {
+              }" postings on ${sourceLabel(run.source)} · ${new Date(run.generated_at).toLocaleString(undefined, {
                 month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
               })}`
-            : "Search onlinejobs.ph and get a shortlist ranked against your resume."}
+            : "Search a job site and get a shortlist ranked against your resume."}
         </p>
       </header>
 

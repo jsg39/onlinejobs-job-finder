@@ -1,4 +1,4 @@
-import type { Job, Profile, ProfileView, ResumeInfo, Run, RunStatus, Status } from "./types";
+import type { Job, Profile, ProfileView, ResumeInfo, Run, RunStatus, Source, Status } from "./types";
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { cache: "no-store", ...init });
@@ -22,11 +22,11 @@ export function uploadResume(file: File) {
   return call<{ resume: ResumeInfo } & ProfileView>("/api/resume", { method: "POST", body: form });
 }
 
-export const startRun = (keyword: string, postings: number) =>
+export const startRun = (keyword: string, postings: number, source: Source) =>
   call<RunStatus>("/api/runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ keyword, postings }),
+    body: JSON.stringify({ keyword, postings, source }),
   });
 
 export const getRun = (id: string) => call<RunStatus>(`/api/runs/${id}`);
