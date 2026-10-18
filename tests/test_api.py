@@ -86,11 +86,19 @@ def test_jobstreet_source_reaches_make_source(client):
     assert client.requested_sources == ["jobstreet"]
 
 
+def test_all_sites_source_reaches_make_source(client):
+    run = wait(client, client.post("/api/runs", json={"source": "all", "postings": 90}).json()["id"])
+    assert run["status"] == "done", run["error"]
+    assert run["result"]["source"] == "all"
+    assert client.requested_sources == ["all"]
+
+
 def test_search_stage_label_names_the_site():
     from ojagent.api import Run
 
     assert Run(keyword="python", postings=30, source="jobstreet").view()["stage_label"] == "Searching JobStreet"
     assert Run(keyword="python", postings=30).view()["stage_label"] == "Searching onlinejobs.ph"
+    assert Run(keyword="python", postings=30, source="all").view()["stage_label"] == "Searching onlinejobs.ph + JobStreet"
 
 
 def test_unknown_source_is_rejected(client):

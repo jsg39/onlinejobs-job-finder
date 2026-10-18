@@ -7,7 +7,8 @@ const KEYWORD_KEY = "ojagent:keyword";
 const SOURCE_KEY = "ojagent:source";
 const CRAWL_DELAY_S = 5;
 const MIN_POSTINGS = 5;
-// Each site's cap is in SOURCES (types.ts): three 30-card result pages.
+// Each site's cap is in SOURCES (types.ts): three 30-card result pages. For both sites
+// the count is the total, split about evenly between them.
 
 function savedKeyword(): string {
   try {

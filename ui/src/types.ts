@@ -1,10 +1,11 @@
 // Shape of out/latest.json, written by ojagent/triage.py:to_json.
 
-export type Source = "onlinejobs" | "jobstreet";
+export type Source = "onlinejobs" | "jobstreet" | "all";
 
 export const SOURCES: Record<Source, { label: string; max: number }> = {
   onlinejobs: { label: "onlinejobs.ph", max: 90 },
   jobstreet: { label: "JobStreet", max: 90 },
+  all: { label: "onlinejobs.ph + JobStreet", max: 90 }, // max is the total across both sites
 };
 
 export interface Job {

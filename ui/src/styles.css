@@ -512,7 +512,7 @@ a.link { text-decoration: none; }
   .section-head { flex-direction: column; }
 }
 
-.field.site { width: 170px; }
+.field.site { width: 230px; }
 .field.scan { width: 150px; }
 .field.scan .money { height: 40px; }
 .field.scan .money input { font-size: 15px; }

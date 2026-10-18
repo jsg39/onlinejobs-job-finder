@@ -2,7 +2,7 @@
 
     uvicorn ojagent.api:app --port 8000
 
-A run scrapes the job site the user picked (onlinejobs.ph or JobStreet) with a 5 s
+A run scrapes the job site the user picked (onlinejobs.ph, JobStreet or both) with a 5 s
 delay between requests, so it takes minutes. It runs on a background thread; the UI
 polls GET /api/runs/{id}. One run at a time keeps the crawl polite.
 """
@@ -73,7 +73,7 @@ class MarkRequest(BaseModel):
 class RunRequest(BaseModel):
     keyword: str = Field(default="python", min_length=1, max_length=60)
     postings: int = Field(default=30, ge=5, le=90)  # newest postings to scan, capped per source
-    source: Literal["onlinejobs", "jobstreet"] = "onlinejobs"
+    source: Literal["onlinejobs", "jobstreet", "all"] = "onlinejobs"
 
 
 @dataclass

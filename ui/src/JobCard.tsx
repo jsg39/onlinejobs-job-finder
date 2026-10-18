@@ -58,6 +58,9 @@ function Meter({ label, value, tip }: { label: string; value: number; tip: strin
   );
 }
 
+// Shortlists can mix sites, so the button says where the posting lives.
+const siteName = (url: string): string => (url.includes("jobstreet.com") ? "JobStreet" : "onlinejobs.ph");
+
 export default function JobCard({ job, payPeriod, status, onStatus }: Props) {
   const approx = approxPay(job, payPeriod);
   const posted = formatPosted(job.posted);
@@ -141,7 +144,7 @@ export default function JobCard({ job, payPeriod, status, onStatus }: Props) {
 
       <footer className="actions">
         <a className="btn primary" href={job.url} target="_blank" rel="noreferrer">
-          Open posting ↗
+          Open on {siteName(job.url)} ↗
         </a>
         {status ? (
           <button className="btn" onClick={() => onStatus(null)}>
