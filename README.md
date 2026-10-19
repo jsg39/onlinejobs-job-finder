@@ -49,7 +49,7 @@ Caveats: this is a single run, and the LLM was a free model (`nvidia/nemotron-3-
 
 ### With Docker (easiest)
 
-Fill in `.env` first (see [Setup](#setup)), then:
+Fill in `.env` and create `profile.md` first (see [Setup](#setup)), then:
 
 ```bash
 docker compose up -d --build
@@ -108,7 +108,7 @@ python -m ojagent.triage --source all --limit 60        # 60 in total, about 30 
 | `ojagent/llm.py` | Thin client for any OpenAI-compatible API (OpenRouter, OpenAI, or local vLLM/Ollama). |
 | `ojagent/models.py`, `config.py` | Posting models; settings from `.env`. |
 | `ui/` | React + TypeScript frontend (Vite), dark mode: Jobs and Profile pages. |
-| `profile.md` | The starting profile: preferences plus resume text. |
+| `profile.example.md` | Template for `profile.md`, the starting profile: preferences plus resume text. |
 
 ## Setup
 
@@ -116,6 +116,7 @@ python -m ojagent.triage --source all --limit 60        # 60 in total, about 30 
 python -m venv .venv && .venv\Scripts\activate      # Windows
 pip install -r requirements.txt
 copy .env.example .env
+copy profile.example.md profile.md
 ```
 
 In `.env`:
@@ -124,7 +125,7 @@ In `.env`:
 
 At least one of the two keys is needed.
 
-Then edit `profile.md` with your own details, or upload a resume on the app's Profile page.
+Then edit `profile.md` with your own details, or upload a resume on the app's Profile page. `profile.md` is git-ignored, so your preferences stay on your machine.
 
 ## Tests
 
