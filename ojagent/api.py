@@ -12,6 +12,7 @@ polls GET /api/runs/{id}. One run at a time keeps the crawl polite.
 
 from __future__ import annotations
 
+import functools
 import io
 import json
 import re
@@ -28,10 +29,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import ROOT, load_settings
-from .llm import LLM, OpenAICompatibleLLM
+from .llm import LLM, build_llm
 from .prefilter import JevPrefilter
 from .profile_store import JobSnapshot, Mark, Profile, ProfileStore, learned_summary, seed_from_markdown
 from . import sources
+from .summary import SummaryStore, source_hash, summarize
 from .scraper import JobSource
 from .triage import render, to_json, triage
 
@@ -72,6 +74,7 @@ def extract_resume_text(filename: str, data: bytes) -> str:
 class MarkRequest(BaseModel):
     status: Literal["applied", "dismissed"] | None  # None clears the mark
     job: JobSnapshot | None = None
+    note: str = Field(default="", max_length=300)
 
 
 class RunRequest(BaseModel):
@@ -122,12 +125,13 @@ def _default_jev() -> JevPrefilter | None:
     return JevPrefilter(key) if key else None
 
 
+@functools.cache  # one client for the app, so it remembers which free model last worked
 def _default_llm() -> LLM | None:
     try:
         s = load_settings()
     except SystemExit:  # no LLM key: Jev-only, summaries come from the posting text
         return None
-    return OpenAICompatibleLLM(s.model, s.api_key, s.base_url)
+    return build_llm(s.model, s.api_key, s.base_url, s.fallback_models)
 
 
 def create_app(
@@ -144,15 +148,36 @@ def create_app(
         description="Job triage for onlinejobs.ph and JobStreet Philippines",
     )
     store = ProfileStore(data_dir, profile_path)
+    summaries = SummaryStore(data_dir)
+    summary_lock = threading.Lock()  # one summary write at a time: after a search or from the page
+
+    def write_summary(llm: LLM) -> None:
+        with summary_lock:
+            summaries.save(summarize(llm, store.composed()))
+
+    def summary_after_search(llm: LLM) -> None:
+        """Bring the Profile page bullets up to date with the marks made since the last summary."""
+        summary = summaries.load()
+        if summary and summary.get("source_hash") == source_hash(store.composed()):
+            return  # nothing changed, so a new summary would say the same
+        try:
+            write_summary(llm)
+        except Exception:
+            pass  # best effort: the page shows the old bullets and can retry
     runs: dict[str, Run] = {}
     lock = threading.Lock()
 
     def profile_view() -> dict:
         profile, marks = store.load(), store.marks()
+        composed = store.composed()
+        summary = summaries.load()
         return {
             "profile": profile.model_dump(),
             "learned": learned_summary(marks),
-            "composed": store.composed(),
+            "composed": composed,
+            "summary": summary,
+            # The profile, marks or reasons changed since the bullets were written.
+            "summary_stale": summary is None or summary.get("source_hash") != source_hash(composed),
         }
 
     def execute(run: Run) -> None:
@@ -177,6 +202,8 @@ def create_app(
             stem.with_suffix(".json").write_text(text, encoding="utf-8")
             (out_dir / "latest.json").write_text(text, encoding="utf-8")
             run.result, run.status = data, "done"
+            if llm is not None:
+                threading.Thread(target=summary_after_search, args=(llm,), daemon=True).start()
         except Exception as e:
             run.error, run.status = f"{type(e).__name__}: {e}", "error"
         finally:
@@ -189,6 +216,17 @@ def create_app(
     @app.put("/api/profile")
     def put_profile(profile: Profile) -> dict:
         store.save(profile)
+        return profile_view()
+
+    @app.post("/api/profile/summary")
+    def refresh_summary() -> dict:
+        llm = make_llm()
+        if llm is None:
+            raise HTTPException(503, "Set an LLM key in .env to get a profile summary.")
+        try:
+            write_summary(llm)
+        except Exception as e:  # bad JSON or a provider hiccup: keep the old bullets
+            raise HTTPException(502, f"Couldn't write the summary: {e}") from e
         return profile_view()
 
     @app.get("/api/resume")
@@ -223,9 +261,16 @@ def create_app(
         store.save(profile)
         return {"resume": None, **profile_view()}
 
+    def marks_view(marks: dict[str, Mark]) -> dict:
+        return {
+            "marks": {k: m.status for k, m in marks.items()},
+            "jobs": {k: m.job.model_dump() for k, m in marks.items()},
+            "notes": {k: m.note for k, m in marks.items() if m.note},
+        }
+
     @app.get("/api/marks")
     def get_marks() -> dict:
-        return {"marks": {k: m.status for k, m in store.marks().items()}}
+        return marks_view(store.marks())
 
     @app.put("/api/marks/{job_id}")
     def put_mark(job_id: str, req: MarkRequest) -> dict:
@@ -234,13 +279,13 @@ def create_app(
         else:
             if req.job is None:
                 raise HTTPException(422, "Send the job with an applied or dismissed mark.")
-            marks = store.set_mark(job_id, Mark(status=req.status, job=req.job))
-        return {"marks": {k: m.status for k, m in marks.items()}}
+            marks = store.set_mark(job_id, Mark(status=req.status, job=req.job, note=req.note.strip()))
+        return marks_view(marks)
 
     @app.delete("/api/marks")
     def clear_marks() -> dict:
         store.clear_marks()
-        return {"marks": {}}
+        return {"marks": {}, "jobs": {}, "notes": {}}
 
     @app.post("/api/runs", status_code=202)
     def start_run(req: RunRequest) -> dict:

@@ -1,4 +1,4 @@
-import type { Job, Profile, ProfileView, ResumeInfo, Run, RunStatus, Source, Status } from "./types";
+import type { Job, MarkedJob, Profile, ProfileView, ResumeInfo, Run, RunStatus, Source, Status } from "./types";
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { cache: "no-store", ...init });
@@ -35,6 +35,8 @@ export const getActiveRun = () => call<{ run: RunStatus | null }>("/api/runs/act
 
 export const getProfile = () => call<ProfileView>("/api/profile");
 
+export const refreshSummary = () => call<ProfileView>("/api/profile/summary", { method: "POST" });
+
 export const putProfile = (profile: Profile) =>
   call<ProfileView>("/api/profile", {
     method: "PUT",
@@ -42,23 +44,20 @@ export const putProfile = (profile: Profile) =>
     body: JSON.stringify(profile),
   });
 
-export const getMarks = () => call<{ marks: Record<string, Status> }>("/api/marks");
+// Marks keep the whole job, so applied jobs still show after a new search replaces the results.
+export interface MarksView {
+  marks: Record<string, Status>;
+  jobs: Record<string, MarkedJob>;
+  notes: Record<string, string>; // the user's reasons, only for marks that have one
+}
 
-export const putMark = (job: Job, status: Status | null) =>
-  call<{ marks: Record<string, Status> }>(`/api/marks/${job.id}`, {
+export const getMarks = () => call<MarksView>("/api/marks");
+
+export const putMark = (job: Job, status: Status | null, note = "") =>
+  call<MarksView>(`/api/marks/${job.id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      status,
-      job: status && {
-        id: job.id,
-        title: job.title,
-        type: job.type,
-        skills: job.skills,
-        pay_usd_month: job.pay_usd_month,
-        role: job.brief?.role ?? null,
-      },
-    }),
+    body: JSON.stringify({ status, note, job: status && { ...job, role: job.brief?.role ?? null } }),
   });
 
-export const clearMarks = () => call<{ marks: Record<string, Status> }>("/api/marks", { method: "DELETE" });
+export const clearMarks = () => call<MarksView>("/api/marks", { method: "DELETE" });

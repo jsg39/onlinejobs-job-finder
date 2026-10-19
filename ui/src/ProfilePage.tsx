@@ -1,12 +1,88 @@
 import { useEffect, useRef, useState } from "react";
-import { clearMarks, deleteResume, getProfile, putProfile, uploadResume } from "./api";
-import type { Preferences, Profile, ProfileView } from "./types";
+import { clearMarks, deleteResume, getProfile, putProfile, refreshSummary, uploadResume } from "./api";
+import type { Preferences, Profile, ProfileSummary, ProfileView } from "./types";
 
 const PERIODS = [
   { value: "month", label: "per month" },
   { value: "hour", label: "per hour" },
   { value: "year", label: "per year" },
 ] as const;
+
+const GLANCE: { key: keyof Omit<ProfileSummary, "generated_at">; title: string }[] = [
+  { key: "about", title: "About you" },
+  { key: "fits", title: "Strong fit for" },
+  { key: "likes", title: "You tend to go for" },
+];
+
+/** LLM-written bullets about the profile; rewritten on its own when the profile or marks change. */
+function AtAGlance({ view, onView }: { view: ProfileView; onView: (v: ProfileView) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const tried = useRef<string | null>(null); // the profile text we last wrote bullets for
+
+  async function refresh() {
+    setBusy(true);
+    setError(null);
+    try {
+      onView(await refreshSummary());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Write the bullets when there are none or the profile changed, once per version of it.
+  useEffect(() => {
+    if (view.summary_stale && tried.current !== view.composed) {
+      tried.current = view.composed;
+      refresh();
+    }
+  }, [view.composed, view.summary_stale]);
+
+  const { summary } = view;
+  return (
+    <section className="panel glance">
+      <header className="section-head">
+        <div>
+          <h2>At a glance</h2>
+          <p className="muted">
+            {busy
+              ? "Updating from your resume, preferences and marks…"
+              : summary
+                ? `From your resume, preferences and marks · ${new Date(summary.generated_at).toLocaleString(undefined, {
+                    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+                  })}`
+                : "A quick read of who you are and what you go for."}
+          </p>
+        </div>
+        <button className="btn" disabled={busy} onClick={refresh}>
+          {busy ? "Updating…" : "Refresh"}
+        </button>
+      </header>
+      {error && <p className="error">{error}</p>}
+      {summary ? (
+        <div className="glance-grid">
+          {GLANCE.map(
+            ({ key, title }) =>
+              summary[key].length > 0 && (
+                <div key={key}>
+                  <h3>{title}</h3>
+                  <ul>
+                    {summary[key].map((b) => (
+                      <li key={b}>{b}</li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+          )}
+        </div>
+      ) : (
+        !busy && !error && <p className="muted">No summary yet.</p>
+      )}
+    </section>
+  );
+}
 
 export default function ProfilePage() {
   const [view, setView] = useState<ProfileView | null>(null);
@@ -54,6 +130,8 @@ export default function ProfilePage() {
 
   return (
     <div className="profile">
+      <AtAGlance view={view} onView={(v) => setView({ ...view, summary: v.summary, summary_stale: v.summary_stale })} />
+
       <section className="panel">
         <header className="section-head">
           <div>
@@ -222,7 +300,17 @@ export default function ProfilePage() {
               {learned.dismissed.length > 0 && (
                 <div>
                   <h3>Not interested</h3>
-                  <ul>{learned.dismissed.slice(0, 10).map((t) => <li key={t}>{t}</li>)}</ul>
+                  <ul>
+                    {learned.dismissed.slice(0, 10).map((t) => {
+                      const note = learned.dismissed_notes.find((n) => n.title === t)?.note;
+                      return (
+                        <li key={t}>
+                          {t}
+                          {note && <span className="muted"> — {note}</span>}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
               )}
             </div>

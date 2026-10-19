@@ -6,7 +6,7 @@ import JobCard from "./JobCard";
 import ProfilePage from "./ProfilePage";
 import SearchPanel from "./SearchPanel";
 import { SOURCES } from "./types";
-import type { Job, Run, RunStatus, Source } from "./types";
+import type { Job, MarkedJob, Run, RunStatus, Source } from "./types";
 import { useStatuses } from "./useStatuses";
 
 type Tab = "foryou" | "applied" | "dismissed";
@@ -31,6 +31,26 @@ function usePage(): Page {
   return page;
 }
 
+// Fill in what an old, slim mark snapshot lacks so it renders as a card.
+const fromMark = (j: MarkedJob): Job => ({
+  url: `https://www.onlinejobs.ph/jobseekers/job/${j.id}`,
+  pay: null,
+  pay_usd_month: null,
+  type: null,
+  hours: null,
+  posted: null,
+  rank: 0,
+  fit: 0,
+  appeal: 0,
+  scam: 0,
+  brief: null,
+  snippet: "",
+  matching_skills: [],
+  skills: [],
+  shortlisted: false,
+  ...j,
+});
+
 // Older saved results have no source; they were all onlinejobs.ph.
 const sourceLabel = (source?: string): string =>
   (source && SOURCES[source as Source]?.label) || SOURCES.onlinejobs.label;
@@ -41,7 +61,7 @@ export default function App() {
   const [startError, setStartError] = useState<string | null>(null);
   const [backendDown, setBackendDown] = useState(false);
   const [tab, setTab] = useState<Tab>("foryou");
-  const { statuses, setStatus, error: markError } = useStatuses();
+  const { statuses, markedJobs, notes, setStatus, error: markError } = useStatuses();
   const page = usePage();
   const [filters, setFilters] = useFilters();
 
@@ -80,20 +100,23 @@ export default function App() {
     }
   }, []);
 
-  // "For you" is every unmarked job that passes the user's filters, best match first.
+  // "For you" is every unmarked job in the latest results that passes the user's filters,
+  // best match first. Applied and not interested come from the saved marks, so they span every search.
   const { groups, unmarked } = useMemo(() => {
     const g: Record<Tab, Job[]> = { foryou: [], applied: [], dismissed: [] };
     let unmarked = 0;
+    const inRun = new Map((run?.jobs ?? []).map((j) => [j.id, j]));
     for (const job of run?.jobs ?? []) {
-      const s = statuses[job.id];
-      if (s) g[s].push(job);
-      else {
-        unmarked++;
-        if (passes(job, filters)) g.foryou.push(job);
-      }
+      if (statuses[job.id]) continue;
+      unmarked++;
+      if (passes(job, filters)) g.foryou.push(job);
+    }
+    for (const [id, s] of Object.entries(statuses)) {
+      const job = inRun.get(id) ?? (markedJobs[id] && fromMark(markedJobs[id]));
+      if (job) g[s].push(job);
     }
     return { groups: g, unmarked };
-  }, [run, statuses, filters]);
+  }, [run, statuses, markedJobs, filters]);
 
   const jobTypes = useMemo(
     () => [...new Set((run?.jobs ?? []).map((j) => j.type).filter((t): t is string => !!t))].sort(),
@@ -151,7 +174,7 @@ export default function App() {
       <SearchPanel active={active} onStart={onStart} startError={startError} />
       {markError && <p className="error">Couldn't save that mark: {markError}</p>}
 
-      {run && (
+      {(run || Object.keys(statuses).length > 0) && (
         <>
           <nav className="tabs" role="tablist">
             {TABS.map((t) => (
@@ -193,39 +216,42 @@ export default function App() {
                   job={job}
                   payPeriod={filters.payPeriod}
                   status={statuses[job.id]}
-                  onStatus={(s) => setStatus(job, s)}
+                  note={notes[job.id]}
+                  onStatus={(s, n) => setStatus(job, s, n)}
                 />
               ))
             )}
           </section>
 
-          <footer className="foot">
-            <p className="muted">
-              {run.used_jev
-                ? `Jev skipped ${run.stats.hidden} clear mismatches · read ${run.stats.fetched}`
-                : `No Jev: read all ${run.stats.fetched}`}
-              {` · ${run.stats.seconds.total ?? "?"} s`}
-              {run.stats.llm_calls > 0 &&
-                ` · LLM ${run.stats.llm_calls} calls, ${(
-                  run.stats.llm_input_tokens + run.stats.llm_output_tokens
-                ).toLocaleString()} tokens`}
-            </p>
-            {run.hidden.length > 0 && (
-              <details>
-                <summary>Skipped by Jev ({run.hidden.length})</summary>
-                <ul className="hidden-list">
-                  {run.hidden.map((h) => (
-                    <li key={h.id}>
-                      <a href={h.url} target="_blank" rel="noreferrer">
-                        {h.title}
-                      </a>
-                      <span className="muted"> {Math.round(h.fit_probability * 100)}%</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </footer>
+          {run && (
+            <footer className="foot">
+              <p className="muted">
+                {run.used_jev
+                  ? `Jev skipped ${run.stats.hidden} clear mismatches · read ${run.stats.fetched}`
+                  : `No Jev: read all ${run.stats.fetched}`}
+                {` · ${run.stats.seconds.total ?? "?"} s`}
+                {run.stats.llm_calls > 0 &&
+                  ` · LLM ${run.stats.llm_calls} calls, ${(
+                    run.stats.llm_input_tokens + run.stats.llm_output_tokens
+                  ).toLocaleString()} tokens`}
+              </p>
+              {run.hidden.length > 0 && (
+                <details>
+                  <summary>Skipped by Jev ({run.hidden.length})</summary>
+                  <ul className="hidden-list">
+                    {run.hidden.map((h) => (
+                      <li key={h.id}>
+                        <a href={h.url} target="_blank" rel="noreferrer">
+                          {h.title}
+                        </a>
+                        <span className="muted"> {Math.round(h.fit_probability * 100)}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </footer>
+          )}
         </>
       )}
     </main>

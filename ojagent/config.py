@@ -18,6 +18,7 @@ class Settings:
     model: str
     out_dir: Path
     typesafe_api_key: str | None = None
+    fallback_models: list[str] | None = None  # None: find free models automatically (OpenRouter)
 
 
 def load_settings() -> Settings:
@@ -36,4 +37,15 @@ def load_settings() -> Settings:
         model=os.getenv("LLM_MODEL", DEFAULT_MODEL),
         out_dir=ROOT / "out",
         typesafe_api_key=os.getenv("TYPESAFE_API_KEY") or None,
+        fallback_models=_fallbacks(os.getenv("LLM_FALLBACK_MODELS", "auto")),
     )
+
+
+def _fallbacks(value: str) -> list[str] | None:
+    """LLM_FALLBACK_MODELS: "auto" (default), "none", or comma-separated model ids."""
+    value = value.strip()
+    if value.lower() in ("", "auto"):
+        return None
+    if value.lower() == "none":
+        return []
+    return [m.strip() for m in value.split(",") if m.strip()]

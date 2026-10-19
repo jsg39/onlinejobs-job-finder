@@ -50,6 +50,14 @@ def test_learning_lists_recent_choices_and_shared_skills():
     assert "## Learned from the candidate's choices" in text and "Marked not interested: Data Entry VA." in text
 
 
+def test_reasons_for_not_interested_reach_the_profile():
+    marks = {"d": mark("dismissed", "Data Entry VA"), "e": mark("dismissed", "Sales Closer")}
+    marks["d"].note = "Repetitive work, no coding"
+    learned = learned_summary(marks)
+    assert learned["dismissed_notes"] == [{"title": "Data Entry VA", "note": "Repetitive work, no coding"}]
+    assert '  - "Data Entry VA": Repetitive work, no coding' in compose(Profile(), marks)
+
+
 def test_learning_can_be_switched_off():
     marks = {"a": mark("applied", "LLM Engineer")}
     assert "Learned" not in compose(Profile(use_learned=False), marks)

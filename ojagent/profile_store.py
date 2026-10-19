@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .pay import usd_per_month
 
@@ -41,7 +41,10 @@ class Profile(BaseModel):
 
 
 class JobSnapshot(BaseModel):
-    """What the app keeps about a job the user marked, enough to learn from."""
+    """What the app keeps about a job the user marked: the fields it learns from, plus
+    whatever else the UI sent (url, pay, brief...) so the job still shows after a new search."""
+
+    model_config = ConfigDict(extra="allow")
 
     id: str
     title: str
@@ -54,6 +57,7 @@ class JobSnapshot(BaseModel):
 class Mark(BaseModel):
     status: Literal["applied", "dismissed"]
     job: JobSnapshot
+    note: str = Field(default="", max_length=300)  # the user's reason, e.g. why they're not interested
     at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
 
 
@@ -100,6 +104,9 @@ def learned_summary(marks: dict[str, Mark]) -> dict:
     return {
         "applied": [j.title for j in applied],
         "dismissed": [j.title for j in dismissed],
+        "dismissed_notes": [
+            {"title": m.job.title, "note": m.note} for m in ordered if m.status == "dismissed" and m.note
+        ],
         "top_skills": [s for s, n in skills.most_common(8) if n >= 2 or len(applied) < 3],
         "types": [t for t, _ in Counter(j.type for j in applied if j.type).most_common(2)],
         "median_pay_usd_month": pays[len(pays) // 2] if pays else None,
@@ -136,6 +143,9 @@ def compose(profile: Profile, marks: dict[str, Mark]) -> str:
             lines.append(f"- Typical pay of jobs they applied to: about USD {learned['median_pay_usd_month']:,}/month.")
         if learned["dismissed"]:
             lines.append("- Marked not interested: " + "; ".join(learned["dismissed"][:LEARN_LIMIT]) + ".")
+        if learned["dismissed_notes"]:
+            lines.append("- Their reasons for passing on jobs (weigh these like stated preferences):")
+            lines += [f'  - "{n["title"]}": {n["note"]}' for n in learned["dismissed_notes"][:LEARN_LIMIT]]
 
     lines += ["", "## Resume", profile.resume_text.strip() or "(no resume yet)"]
     return "\n".join(lines) + "\n"

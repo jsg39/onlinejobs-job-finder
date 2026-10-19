@@ -64,6 +64,9 @@ export interface Run {
 
 export type Status = "applied" | "dismissed";
 
+// A job as saved with its mark. Marks made before full jobs were kept only have these fields.
+export type MarkedJob = Partial<Job> & Pick<Job, "id" | "title">;
+
 export interface ResumeInfo {
   filename: string;
   uploaded_at: string;
@@ -105,13 +108,23 @@ export interface Profile {
 export interface Learned {
   applied: string[];
   dismissed: string[];
+  dismissed_notes: { title: string; note: string }[];
   top_skills: string[];
   types: string[];
   median_pay_usd_month: number | null;
+}
+
+export interface ProfileSummary {
+  about: string[]; // who you are
+  fits: string[]; // jobs you're a strong fit for
+  likes: string[]; // what you tend to go for or avoid
+  generated_at: string;
 }
 
 export interface ProfileView {
   profile: Profile;
   learned: Learned;
   composed: string; // the exact text Jev and the LLM rank against
+  summary: ProfileSummary | null;
+  summary_stale: boolean; // the profile or marks changed since the summary was written
 }

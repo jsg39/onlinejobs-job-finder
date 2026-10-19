@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from ojagent.api import create_app, extract_resume_text
 from tests.conftest import DESIGN_JOB, PYTHON_JOB, FakeSource
+from ojagent.llm import Turn
 from tests.test_triage import FITS, FakeJev, FakeLLM
 
 BASE_PROFILE = """# Me
@@ -224,6 +225,80 @@ def test_marks_feed_the_learned_section(client):
     assert client.get("/api/marks").json()["marks"] == {"200": "dismissed"}
     client.delete("/api/marks")
     assert client.get("/api/marks").json()["marks"] == {}
+
+
+def test_marked_jobs_outlive_the_search(client):
+    job = {"id": "100", "title": "Python Backend Developer", "url": "https://example.com/100",
+           "pay": "$1,000/month", "brief": {"role": "Build APIs", "fits": [], "gaps": []}}
+    client.put("/api/marks/100", json={"status": "applied", "job": job})
+    saved = client.get("/api/marks").json()["jobs"]["100"]
+    assert saved["url"] == "https://example.com/100" and saved["brief"]["role"] == "Build APIs"
+
+
+def test_dismissal_reason_is_saved_and_learned(client):
+    job = {"id": "200", "title": "Graphic Designer"}
+    r = client.put("/api/marks/200", json={"status": "dismissed", "job": job, "note": " Not a design role "})
+    assert r.json()["notes"] == {"200": "Not a design role"}
+    assert '"Graphic Designer": Not a design role' in client.get("/api/profile").json()["composed"]
+
+
+def test_profile_summary_is_cached_until_the_profile_changes(tmp_path):
+    class SummaryLLM:
+        model = "fake"
+
+        def complete(self, messages):
+            assert "Jane Dev" in messages[0]["content"]
+            assert "Marked not interested" not in messages[0]["content"]  # titles alone invite guesses
+            return Turn(content='```json\n{"about": ["You build Python APIs"], "fits": ["Backend roles"], '
+                                '"likes": ["Remote work"]}\n```')
+
+    app = create_app(make_llm=SummaryLLM, profile_path=tmp_path / "none.md", data_dir=tmp_path / "data",
+                     out_dir=tmp_path / "out", ui_dir=tmp_path / "ui")
+    c = TestClient(app)
+    profile = c.get("/api/profile").json()
+    assert profile["summary"] is None and profile["summary_stale"]
+
+    profile["profile"]["resume_text"] = RESUME
+    c.put("/api/profile", json=profile["profile"])
+    c.put("/api/marks/9", json={"status": "dismissed", "job": {"id": "9", "title": "Night Shift Support"}})
+    view = c.post("/api/profile/summary").json()
+    assert view["summary"]["about"] == ["You build Python APIs"] and not view["summary_stale"]
+
+    view["profile"]["preferences"]["notes"] = "Prefer startups"
+    assert c.put("/api/profile", json=view["profile"]).json()["summary_stale"]
+
+
+def test_search_refreshes_a_stale_summary(tmp_path):
+    calls = []
+
+    class LLM(FakeLLM):
+        def complete(self, messages):
+            if "<profile>" in messages[0]["content"]:
+                calls.append("summary")
+                return Turn(content='{"about": ["You build APIs"], "fits": [], "likes": []}')
+            return super().complete(messages)
+
+    (tmp_path / "profile.md").write_text(BASE_PROFILE, encoding="utf-8")
+    app = create_app(make_source=lambda key: FakeSource([PYTHON_JOB, DESIGN_JOB]),
+                     make_jev=lambda: FakeJev({"100": 0.9, "200": 0.05}, FITS),
+                     make_llm=lambda: LLM({PYTHON_JOB.title: {"role": "FastAPI backend work", "fits": []}}),
+                     profile_path=tmp_path / "profile.md", data_dir=tmp_path / "data",
+                     out_dir=tmp_path / "out", ui_dir=tmp_path / "ui")
+    c = TestClient(app)
+
+    def search_and_settle():
+        wait(c, c.post("/api/runs", json={}).json()["id"])
+        for _ in range(100):
+            if not c.get("/api/profile").json()["summary_stale"]:
+                return
+            time.sleep(0.02)
+        raise AssertionError("summary was not refreshed")
+
+    search_and_settle()
+    assert calls == ["summary"]
+    search_and_settle()  # nothing changed since: no second LLM call
+    time.sleep(0.1)
+    assert calls == ["summary"]
 
 
 def test_mark_needs_the_job(client):

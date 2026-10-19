@@ -23,7 +23,7 @@ from typing import Callable
 from datetime import datetime
 
 from .config import ROOT, load_settings
-from .llm import LLM, OpenAICompatibleLLM
+from .llm import LLM, build_llm
 from .models import JobPosting, JobSummary
 from .pay import usd_per_hour, usd_per_month
 from .prefilter import JevPrefilter
@@ -471,7 +471,7 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.profile, encoding="utf-8") as f:
         profile = f.read()
     model = args.model or settings.model
-    llm = None if args.no_llm else OpenAICompatibleLLM(model, settings.api_key, settings.base_url)
+    llm = None if args.no_llm else build_llm(model, settings.api_key, settings.base_url, settings.fallback_models)
     jev = None if args.no_jev else JevPrefilter(settings.typesafe_api_key)
 
     sys.stdout.reconfigure(encoding="utf-8")

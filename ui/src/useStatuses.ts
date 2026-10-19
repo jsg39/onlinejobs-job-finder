@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getMarks, putMark } from "./api";
-import type { Job, Status } from "./types";
+import type { Job, MarkedJob, Status } from "./types";
 
 /**
  * Applied / not-interested marks. They live on the backend, where they teach the
@@ -8,15 +8,21 @@ import type { Job, Status } from "./types";
  */
 export function useStatuses() {
   const [statuses, setStatuses] = useState<Record<string, Status>>({});
+  const [markedJobs, setMarkedJobs] = useState<Record<string, MarkedJob>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getMarks()
-      .then((r) => setStatuses(r.marks))
+      .then((r) => {
+        setStatuses(r.marks);
+        setMarkedJobs(r.jobs);
+        setNotes(r.notes);
+      })
       .catch(() => {});
   }, []);
 
-  const setStatus = useCallback((job: Job, status: Status | null) => {
+  const setStatus = useCallback((job: Job, status: Status | null, note = "") => {
     let previous: Record<string, Status> = {};
     setStatuses((prev) => {
       previous = prev;
@@ -25,9 +31,11 @@ export function useStatuses() {
       else delete next[job.id];
       return next;
     });
-    putMark(job, status)
+    putMark(job, status, note)
       .then((r) => {
         setStatuses(r.marks);
+        setMarkedJobs(r.jobs);
+        setNotes(r.notes);
         setError(null);
       })
       .catch((e) => {
@@ -36,5 +44,5 @@ export function useStatuses() {
       });
   }, []);
 
-  return { statuses, setStatus, error };
+  return { statuses, markedJobs, notes, setStatus, error };
 }

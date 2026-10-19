@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PERIOD_SUFFIX, type PayPeriod, payIn } from "./filters";
 import Tip, { TIPS } from "./Tip";
 import type { Job, Status } from "./types";
@@ -6,7 +7,8 @@ interface Props {
   job: Job;
   payPeriod: PayPeriod;
   status?: Status;
-  onStatus: (status: Status | null) => void;
+  note?: string;
+  onStatus: (status: Status | null, note?: string) => void;
 }
 
 function ago(d: Date): string {
@@ -61,7 +63,19 @@ function Meter({ label, value, tip }: { label: string; value: number; tip: strin
 // Shortlists can mix sites, so the button says where the posting lives.
 const siteName = (url: string): string => (url.includes("jobstreet.com") ? "JobStreet" : "onlinejobs.ph");
 
-export default function JobCard({ job, payPeriod, status, onStatus }: Props) {
+export default function JobCard({ job, payPeriod, status, note, onStatus }: Props) {
+  // The optional "why not?" box, shown on Not interested and when editing a saved reason.
+  const [asking, setAsking] = useState(false);
+  const [draft, setDraft] = useState("");
+  const ask = () => {
+    setDraft(note ?? "");
+    setAsking(true);
+  };
+  const dismiss = (reason: string) => {
+    setAsking(false);
+    onStatus("dismissed", reason.trim());
+  };
+
   const approx = approxPay(job, payPeriod);
   const posted = formatPosted(job.posted);
   const meta = [job.type, job.hours && `${job.hours} hrs/wk`].filter(Boolean);
@@ -142,25 +156,73 @@ export default function JobCard({ job, payPeriod, status, onStatus }: Props) {
         <p className="warning">Possible red flags ({Math.round(job.scam * 100)}% scam signal). Read carefully.</p>
       )}
 
-      <footer className="actions">
-        <a className="btn primary" href={job.url} target="_blank" rel="noreferrer">
-          Open on {siteName(job.url)} ↗
-        </a>
-        {status ? (
-          <button className="btn" onClick={() => onStatus(null)}>
-            Undo {status === "applied" ? "applied" : "not interested"}
-          </button>
-        ) : (
-          <>
-            <button className="btn" onClick={() => onStatus("applied")}>
-              Mark applied
+      {status === "dismissed" && note && !asking && (
+        <p className="reason">
+          <span className="muted">Your reason:</span> {note}
+        </p>
+      )}
+
+      {asking ? (
+        <form
+          className="reason-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            dismiss(draft);
+          }}
+        >
+          <label className="field grow">
+            Why not? Optional, and it teaches your profile.
+            <input
+              autoFocus
+              maxLength={300}
+              value={draft}
+              placeholder="e.g. pay too low, on-site, too junior, not coding"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && setAsking(false)}
+            />
+          </label>
+          <div className="actions">
+            <button className="btn primary" type="submit">
+              {status ? "Save reason" : "Not interested"}
             </button>
-            <button className="btn ghost" onClick={() => onStatus("dismissed")}>
-              Not interested
+            {!status && (
+              <button className="btn" type="button" onClick={() => dismiss("")}>
+                Skip reason
+              </button>
+            )}
+            <button className="btn ghost" type="button" onClick={() => setAsking(false)}>
+              Cancel
             </button>
-          </>
-        )}
-      </footer>
+          </div>
+        </form>
+      ) : (
+        <footer className="actions">
+          <a className="btn primary" href={job.url} target="_blank" rel="noreferrer">
+            Open on {siteName(job.url)} ↗
+          </a>
+          {status ? (
+            <>
+              <button className="btn" onClick={() => onStatus(null)}>
+                Undo {status === "applied" ? "applied" : "not interested"}
+              </button>
+              {status === "dismissed" && (
+                <button className="btn ghost" onClick={ask}>
+                  {note ? "Edit reason" : "Add reason"}
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button className="btn" onClick={() => onStatus("applied")}>
+                Mark applied
+              </button>
+              <button className="btn ghost" onClick={ask}>
+                Not interested
+              </button>
+            </>
+          )}
+        </footer>
+      )}
     </article>
   );
 }
